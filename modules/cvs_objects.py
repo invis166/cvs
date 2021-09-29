@@ -1,5 +1,8 @@
 import abc
 import os
+import hashlib
+
+from folders_enum import FoldersEnum
 
 
 class CVSObject(metaclass=abc.ABCMeta):
@@ -15,12 +18,18 @@ class CVSObject(metaclass=abc.ABCMeta):
 
 
 class Blob(CVSObject):
-    def __init__(self):
-        self.hash_sum = 'some_hash'
-        self.content = b'data'
+    '''Blob is a file container'''
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def get_hash(self) -> bytes:
+        header = f'blob #\0'.encode()
+
+        return hashlib.sha1(header + self.content).digest()
 
 
 class Commit(CVSObject):
+    '''Commit is reference to a top-level tree'''
     def __init__(self, tree: "Tree"):
         self.tree = tree
         self.parent_commit = None
@@ -31,26 +40,43 @@ class Commit(CVSObject):
 
         return commit
 
+    def get_hash(self) -> bytes:
+        header = f'commit #\0'.encode()
+
+        return hashlib.sha1(header + self.tree.get_hash()).digest()
+
     @staticmethod
     def initialize_from_reference(path_to_reference: str) -> "Commit":
         pass
 
 
 class Tree(CVSObject):
+    '''Tree is a collection of blobs and trees. Representing folder'''
     def __init__(self):
-        self.children = {}
+        self.children: dict[bytes, _TreeObjectData] = {}
 
-    def add_item(self, item_hash: bytes, item_name: str, item_type: str):
-        self.children[item_hash] = _TreeObjectData(item_name, item_type)
+    def __iter__(self) -> "Tree":
+        return self
+
+    def __next__(self) -> tuple[bytes, "_TreeObjectData"]:
+        for object_hash, object_data in self.children.items():
+            return object_hash, object_data
+
+    def get_hash(self) -> bytes:
+        raise NotImplementedError
+
+    def add_object(self, object_hash: bytes, object_name: str, object_type: type):
+        self.children[object_hash] = _TreeObjectData(object_name, object_type)
 
 
 class _TreeObjectData:
-    def __init__(self, name: str, object_type: str):
+    def __init__(self, name: str, object_type: type):
         self.name = name
         self.object_type = object_type
 
 
 class Branch(CVSObject):
+    '''Branch is a reference to a commit'''
     def __init__(self, name: str, commit: Commit):
         self.name = name
         self.commit = commit
@@ -65,6 +91,7 @@ class Branch(CVSObject):
 
 
 class Head(CVSObject):
+    '''Head is a reference to a current branch'''
     def __init__(self, branch: Branch):
         self.branch = branch
 
