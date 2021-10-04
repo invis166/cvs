@@ -2,37 +2,29 @@ import abc
 import os
 import hashlib
 
-from folders_enum import FoldersEnum
 
-
-class CVSObject(metaclass=abc.ABCMeta):
-    def get_hash(self) -> bytes:
-        pass
-
-    def get_content(self) -> bytes:
-        pass
-
-    @staticmethod
-    def initialize_from_reference(path_to_reference: str) -> "CVSObject":
+class CVSObject(abc.ABC):
+    @abc.abstractmethod
+    def get_object_hash(self) -> bytes:
         pass
 
 
 class Blob(CVSObject):
     '''Blob is a file container'''
-    def __init__(self, content: bytes):
-        self.content = content
-
-    def get_hash(self) -> bytes:
+    def get_object_hash(self) -> bytes:
         header = f'blob #\0'.encode()
 
         return hashlib.sha1(header + self.content).digest()
+
+    def __init__(self, content: bytes):
+        self.content = content
 
 
 class Commit(CVSObject):
     '''Commit is reference to a top-level tree'''
     def __init__(self, tree: "Tree"):
         self.tree = tree
-        self.parent_commit = None
+        self.parent_commit: Commit = None
 
     def derive_commit(self, tree: "Tree") -> "Commit":
         commit = Commit(tree)
@@ -40,39 +32,36 @@ class Commit(CVSObject):
 
         return commit
 
-    def get_hash(self) -> bytes:
+    def get_object_hash(self) -> bytes:
         header = f'commit #\0'.encode()
 
-        return hashlib.sha1(header + self.tree.get_hash()).digest()
-
-    @staticmethod
-    def initialize_from_reference(path_to_reference: str) -> "Commit":
-        pass
+        return hashlib.sha1(header + self.tree.get_object_hash() + self.parent_commit.tree.get_object_hash()).digest()
 
 
 class Tree(CVSObject):
-    '''Tree is a collection of blobs and trees. Representing folder'''
+    '''Tree is a collection of blobs and trees. Represents a folder'''
     def __init__(self):
-        self.children: dict[bytes, _TreeObjectData] = {}
+        self.children: dict[bytes, "_TreeObjectData"] = {}
 
-    def __iter__(self) -> "Tree":
-        return self
+    def add_object(self, obj: CVSObject, data: "_TreeObjectData"):
+        self.children[obj.get_object_hash()] = data
 
-    def __next__(self) -> tuple[bytes, "_TreeObjectData"]:
-        for object_hash, object_data in self.children.items():
-            return object_hash, object_data
-
-    def get_hash(self) -> bytes:
+    def get_object_hash(self) -> bytes:
         raise NotImplementedError
 
-    def add_object(self, object_hash: bytes, object_name: str, object_type: type):
-        self.children[object_hash] = _TreeObjectData(object_name, object_type)
+    @staticmethod
+    def get_different_files(first: "Tree", second: "Tree") -> dict[bytes, "_TreeObjectData"]:
+        first_tree_objects = set(first.children.items())
+        second_tree_objects = set(second.children.items())
+
+        return {obj_hash: obj_data
+                for obj_hash, obj_data in first_tree_objects.symmetric_difference(second_tree_objects)}
 
 
 class _TreeObjectData:
     def __init__(self, name: str, object_type: type):
         self.name = name
-        self.object_type = object_type
+        self.type = object_type
 
 
 class Branch(CVSObject):
@@ -81,13 +70,8 @@ class Branch(CVSObject):
         self.name = name
         self.commit = commit
 
-    @staticmethod
-    def initialize_from_reference(path_to_reference: str) -> "Branch":
-        branch_name = os.path.basename(path_to_reference)
-        with open(path_to_reference, 'r') as ref:
-            commit_ref_dir = ref.readline()[0][:5]  # removing 'ref: ' prefix
-
-        return Branch(branch_name, Commit.initialize_from_reference(commit_ref_dir))
+    def get_object_hash(self) -> bytes:
+        pass
 
 
 class Head(CVSObject):
@@ -95,6 +79,5 @@ class Head(CVSObject):
     def __init__(self, branch: Branch):
         self.branch = branch
 
-    @staticmethod
-    def initialize_from_reference(path_to_reference: str) -> "Head":
+    def get_object_hash(self) -> bytes:
         pass
