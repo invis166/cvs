@@ -6,3 +6,4 @@ class FoldersEnum(str, Enum):
     REFS = '.cool_cvs/refs/'
     HEADS = '.cool_cvs/refs/heads'
     OBJECTS = '.cool_cvs/objects/'
+    INDEX = '.cool_cvs/index/'
