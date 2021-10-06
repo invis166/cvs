@@ -129,8 +129,6 @@ class Head(Reference):
         pass
 
 
-
-
 @dataclass
 class TreeObjectData:
     def __init__(self, name: str, object_type: type):
