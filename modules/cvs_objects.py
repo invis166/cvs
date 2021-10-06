@@ -1,23 +1,42 @@
 import abc
+import itertools
 import os
+from dataclasses import dataclass
 import hashlib
+import pickle
+
+from storage import CVSStorage
 
 
 class CVSObject(abc.ABC):
     @abc.abstractmethod
-    def get_object_hash(self) -> bytes:
+    def get_hash(self) -> bytes:
+        pass
+
+    @abc.abstractmethod
+    def serialize(self) -> bytes:
+        pass
+
+    @staticmethod
+    @abc.abstractmethod
+    def deserialize(content: bytes) -> "CVSObject":
         pass
 
 
 class Blob(CVSObject):
     '''Blob is a file container'''
-    def get_object_hash(self) -> bytes:
-        header = f'blob #\0'.encode()
-
-        return hashlib.sha1(header + self.content).digest()
-
     def __init__(self, content: bytes):
         self.content = content
+
+    def serialize(self) -> bytes:
+        return self.content
+
+    @staticmethod
+    def deserialize(content: bytes) -> "Blob":
+        return Blob(content)
+
+    def get_hash(self) -> bytes:
+        return hashlib.sha1(self.content).digest()
 
 
 class Commit(CVSObject):
@@ -32,52 +51,88 @@ class Commit(CVSObject):
 
         return commit
 
-    def get_object_hash(self) -> bytes:
-        header = f'commit #\0'.encode()
+    def serialize(self) -> bytes:
+        return pickle.dumps(self)
 
-        return hashlib.sha1(header + self.tree.get_object_hash() + self.parent_commit.tree.get_object_hash()).digest()
+    @staticmethod
+    def deserialize(content: bytes) -> "Commit":
+        return pickle.loads(content)
+
+    def get_hash(self) -> bytes:
+        return hashlib.sha1(self.tree.get_hash() + self.parent_commit.tree.get_hash()).digest()
 
 
 class Tree(CVSObject):
     '''Tree is a collection of blobs and trees. Represents a folder'''
     def __init__(self):
-        self.children: dict[bytes, "_TreeObjectData"] = {}
+        self.children: dict[TreeObjectData, bytes] = {}
 
-    def add_object(self, obj: CVSObject, data: "_TreeObjectData"):
-        self.children[obj.get_object_hash()] = data
+    def add_object(self, data: "TreeObjectData", object_hash: bytes):
+        self.children[data] = object_hash
 
-    def get_object_hash(self) -> bytes:
-        raise NotImplementedError
+    def serialize(self) -> bytes:
+        return pickle.dumps(self)
 
     @staticmethod
-    def get_different_files(first: "Tree", second: "Tree") -> dict[bytes, "_TreeObjectData"]:
-        first_tree_objects = set(first.children.items())
-        second_tree_objects = set(second.children.items())
+    def deserialize(content: bytes) -> "Tree":
+        return pickle.loads(content)
 
-        return {obj_hash: obj_data
-                for obj_hash, obj_data in first_tree_objects.symmetric_difference(second_tree_objects)}
+    def get_hash(self) -> bytes:
+        sha1_bytes = 20
+        counter = 0
+        total_bytes = bytearray(sha1_bytes * len(self.children))
+        for object_hash in itertools.chain(self.children.values()):
+            for j in object_hash:
+                total_bytes[counter] = j
+                counter += 1
+
+        return hashlib.sha1(total_bytes).digest()
+
+    @staticmethod
+    def initialize_from_directory(directory: str) -> "Tree":
+        '''Return a Tree object representing a directory'''
+        tree = Tree()
+        for file in os.listdir(directory):
+            full_path = os.path.join(directory, file)
+            if os.path.isdir(file):
+                file_data = TreeObjectData(file, Blob)
+                obj = Tree.initialize_from_directory(full_path)
+            else:
+                file_data = TreeObjectData(file, Blob)
+                obj = Blob(CVSStorage.get_file_content(full_path))
+
+            tree.add_object(file_data, obj.get_hash())
+
+        return tree
 
 
-class _TreeObjectData:
-    def __init__(self, name: str, object_type: type):
-        self.name = name
-        self.type = object_type
+class Reference:
+    pass
 
 
-class Branch(CVSObject):
+class Branch(Reference):
     '''Branch is a reference to a commit'''
     def __init__(self, name: str, commit: Commit):
         self.name = name
         self.commit = commit
 
-    def get_object_hash(self) -> bytes:
+    def get_hash(self) -> bytes:
         pass
 
 
-class Head(CVSObject):
+class Head(Reference):
     '''Head is a reference to a current branch'''
     def __init__(self, branch: Branch):
         self.branch = branch
 
-    def get_object_hash(self) -> bytes:
+    def get_hash(self) -> bytes:
         pass
+
+
+
+
+@dataclass
+class TreeObjectData:
+    def __init__(self, name: str, object_type: type):
+        self.name = name
+        self.type = object_type
