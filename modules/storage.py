@@ -5,34 +5,54 @@ from cvs_objects import CVSObject
 
 
 class KVStorage(metaclass=abc.ABCMeta):
+    @staticmethod
     @abc.abstractmethod
-    def store(self, item):
+    def store(key, value, destination):
         pass
 
+    @staticmethod
     @abc.abstractmethod
-    def read(self, data):
+    def read(key, source):
         pass
 
 
-class FolderStorage(KVStorage):
-    def __init__(self, directory: str):
-        self.directory = directory
+class SimpleStorage(KVStorage):
+    @staticmethod
+    def store(key: str, value: bytes, destination: str):
+        os.makedirs(destination)
+        with open(os.path.join(destination, key), 'wb') as f:
+            f.write(value)
 
-    def store(self, item: CVSObject):
-        item_hash = item.get_object_hash()
-        object_name = item_hash.hex()[2:]
+    @staticmethod
+    def read(key: str, source: str) -> bytes:
+        return CVSStorage.get_file_content(os.path.join(source, key))
 
-        object_directory = FolderStorage.get_object_directory(self.directory, item_hash)
-        os.makedirs(object_directory)
+    @staticmethod
+    def get_file_content(path: str) -> bytes:
+        with open(path, 'rb') as f:
+            return f.read()
 
-        with open(os.path.join(object_directory, object_name), 'wb') as f:
-            f.write(item.serialize())
 
-    def read(self, item_hash: bytes) -> bytes:
-        object_name = item_hash.hex()[2:]
-        object_directory = FolderStorage.get_object_directory(self.directory, item_hash)
+# TODO: Visitor Pattern
+class CVSStorage(SimpleStorage):
+    @staticmethod
+    def store_object(item, item_hash, destination: str):
+        if isinstance(item, CVSObject):
+            object_name = item_hash.hex()[2:]
+            object_directory = CVSStorage.get_object_directory(destination, item_hash)
+            CVSStorage.store(object_name, item.serialize(), object_directory)
+        else:
+            raise NotImplementedError
 
-        return FolderStorage.get_file_content(os.path.join(object_directory, object_name))
+    @staticmethod
+    def read_object(item_hash: bytes, item_type: type, source: str) -> bytes:
+        if issubclass(item_type, CVSObject):
+            # item_hash = item.get_hash()
+            object_name = item_hash.hex()[2:]
+            object_directory = CVSStorage.get_object_directory(source, item_hash)
+            return CVSStorage.read(object_name, object_directory)
+        else:
+            raise NotImplementedError
 
     @staticmethod
     def get_object_directory(path_to_objects: str, object_hash: bytes) -> str:
