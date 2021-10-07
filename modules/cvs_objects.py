@@ -34,14 +34,16 @@ class Blob(CVSObject):
         return Blob(content)
 
     def get_hash(self) -> bytes:
-        return hashlib.sha1(self.content).digest()
+        header = b'blob #\0'
+
+        return hashlib.sha1(header + self.content).digest()
 
 
 class Commit(CVSObject):
     '''Commit is reference to a top-level tree'''
     def __init__(self, tree: "Tree"):
         self.tree = tree
-        self.parent_commit: Commit = None
+        self.parent_commit: Commit = self
 
     def derive_commit(self, tree: "Tree") -> "Commit":
         commit = Commit(tree)
@@ -57,7 +59,9 @@ class Commit(CVSObject):
         return pickle.loads(content)
 
     def get_hash(self) -> bytes:
-        return hashlib.sha1(self.tree.get_hash() + self.parent_commit.tree.get_hash()).digest()
+        header = b'commit #\0'
+
+        return hashlib.sha1(header + self.tree.get_hash() + self.parent_commit.tree.get_hash()).digest()
 
 
 class Tree(CVSObject):
@@ -76,6 +80,7 @@ class Tree(CVSObject):
         return pickle.loads(content)
 
     def get_hash(self) -> bytes:
+        header = b'tree #\0'
         sha1_bytes = 20
         counter = 0
         total_bytes = bytearray(sha1_bytes * len(self.children))
@@ -84,7 +89,7 @@ class Tree(CVSObject):
                 total_bytes[counter] = j
                 counter += 1
 
-        return hashlib.sha1(total_bytes).digest()
+        return hashlib.sha1(header + total_bytes).digest()
 
     @staticmethod
     def initialize_from_directory(directory: str) -> "Tree":
@@ -103,29 +108,6 @@ class Tree(CVSObject):
             tree.add_object(file_data, obj.get_hash())
 
         return tree
-
-
-class Reference:
-    pass
-
-
-class Branch(Reference):
-    '''Branch is a reference to a commit'''
-    def __init__(self, name: str, commit: Commit):
-        self.name = name
-        self.commit = commit
-
-    def get_hash(self) -> bytes:
-        pass
-
-
-class Head(Reference):
-    '''Head is a reference to a current branch'''
-    def __init__(self, branch: Branch):
-        self.branch = branch
-
-    def get_hash(self) -> bytes:
-        pass
 
 
 @dataclass(frozen=True)
