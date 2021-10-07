@@ -1,5 +1,4 @@
 import os
-
 import pytest
 
 from modules.cvs_objects import Tree, Blob, TreeObjectData
@@ -35,28 +34,18 @@ def objects():
 
     return objects
 
-# @pytest.fixture
-# def subdirs():
-#     subdirs = [
-#         'subdir1',
-#         'subdir2/subsubdir1/subsubdir2',
-#         'subdir3/subsubdir2'
-#     ]
-#
-#     return subdirs
 
-
-@pytest.mark.parametrize("objects", [
+@pytest.mark.parametrize("tree_objects", [
     [(TreeObjectData('123', Blob), b'123'), (TreeObjectData('456', Blob), b'456')],
     [(TreeObjectData('123', Tree), b'123'), (TreeObjectData('456', Tree), b'456')],
     [(TreeObjectData('123', Tree), b'123'), (TreeObjectData('456', Blob), b'456')]
 ])
-def test_add_object_properly_add_object(tree, objects):
-    for obj in objects:
+def test_add_object_properly_add_object(tree, tree_objects):
+    for obj in tree_objects:
         tree.add_object(*obj)
 
-    assert len(tree.children) == len(objects)
-    for obj in objects:
+    assert len(tree.children) == len(tree_objects)
+    for obj in tree_objects:
         assert tree.children[obj[0]] == obj[1]
 
 
