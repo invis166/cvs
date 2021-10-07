@@ -5,8 +5,6 @@ from dataclasses import dataclass
 import hashlib
 import pickle
 
-from storage import CVSStorage
-
 
 class CVSObject(abc.ABC):
     @abc.abstractmethod
@@ -99,7 +97,8 @@ class Tree(CVSObject):
                 obj = Tree.initialize_from_directory(full_path)
             else:
                 file_data = TreeObjectData(file, Blob)
-                obj = Blob(CVSStorage.get_file_content(full_path))
+                with open(full_path, 'rb') as f:
+                    obj = Blob(f.read())
 
             tree.add_object(file_data, obj.get_hash())
 
@@ -129,8 +128,8 @@ class Head(Reference):
         pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class TreeObjectData:
-    def __init__(self, name: str, object_type: type):
-        self.name = name
-        self.type = object_type
+    name: str
+    object_type: type
+

@@ -1,7 +1,7 @@
 import os
 import abc
 
-from cvs_objects import CVSObject
+import cvs_objects
 
 
 class KVStorage(metaclass=abc.ABCMeta):
@@ -37,7 +37,7 @@ class SimpleStorage(KVStorage):
 class CVSStorage(SimpleStorage):
     @staticmethod
     def store_object(item, item_hash, destination: str):
-        if isinstance(item, CVSObject):
+        if isinstance(item, cvs_objects.CVSObject):
             object_name = item_hash.hex()[2:]
             object_directory = CVSStorage.get_object_directory(destination, item_hash)
             CVSStorage.store(object_name, item.serialize(), object_directory)
@@ -46,7 +46,7 @@ class CVSStorage(SimpleStorage):
 
     @staticmethod
     def read_object(item_hash: bytes, item_type: type, source: str) -> bytes:
-        if issubclass(item_type, CVSObject):
+        if issubclass(item_type, cvs_objects.CVSObject):
             # item_hash = item.get_hash()
             object_name = item_hash.hex()[2:]
             object_directory = CVSStorage.get_object_directory(source, item_hash)
