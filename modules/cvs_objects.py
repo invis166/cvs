@@ -97,8 +97,8 @@ class Tree(CVSObject):
         tree = Tree()
         for file in os.listdir(directory):
             full_path = os.path.join(directory, file)
-            if os.path.isdir(file):
-                file_data = TreeObjectData(file, Blob)
+            if os.path.isdir(full_path):
+                file_data = TreeObjectData(file, Tree)
                 obj = Tree.initialize_from_directory(full_path)
             else:
                 file_data = TreeObjectData(file, Blob)
