@@ -1,6 +1,6 @@
 import cmd
 import os
-from cvs import CVS
+from folders_enum import FoldersEnum
 
 
 class CVSShell(cmd.Cmd):
@@ -10,18 +10,12 @@ class CVSShell(cmd.Cmd):
     def __init__(self):
         super(CVSShell, self).__init__()
         self.repository_directory = None
-        self.cvs_data_directory_name = '.cool_cvs'
         self._set_working_directory(os.getcwd())
-        self.cvs = CVS()
+        self.cvs = None
 
-    # ----- basic cvs commands -----
     def do_init(self, arg: str):
         '''Initialize repository'''
-        self.repository_directory = self.current_directory
-        try:
-            os.mkdir(os.path.join(self.current_directory, self.cvs_data_directory_name))
-        except FileExistsError:
-            print('repository already exists')
+        print('not implemented')
 
     def do_commit(self, arg: str):
         '''Create a new commit'''
@@ -30,6 +24,10 @@ class CVSShell(cmd.Cmd):
     def do_status(self, arg: str):
         '''Show an index'''
         print('not implemented')
+
+    def do_ls(self, arg: str):
+        for item in os.listdir(self.current_directory):
+            print(item)
 
     def do_cd(self, arg: str):
         '''Change working directory'''
@@ -48,14 +46,14 @@ class CVSShell(cmd.Cmd):
         except FileExistsError:
             print(f'directory {os.path.realpath(arg)} already exists')
 
-    # ---- utilities -----
     def _set_working_directory(self, directory: str):
         self.current_directory = os.path.abspath(directory)
         os.chdir(self.current_directory)
         CVSShell.prompt = f'{self.current_directory}$ '
 
-    def _is_directory_a_repository(self, directory) -> bool:
-        return os.path.exists(os.path.join(os.path.abspath(directory), self.cvs_data_directory_name))
+    @staticmethod
+    def _is_directory_a_repository(directory) -> bool:
+        return os.path.exists(os.path.join(os.path.abspath(directory), FoldersEnum.CVS_DATA))
 
 
 if __name__ == '__main__':
