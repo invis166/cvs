@@ -98,10 +98,10 @@ class Tree(CVSObject):
         for file in os.listdir(directory):
             full_path = os.path.join(directory, file)
             if os.path.isdir(full_path):
-                file_data = TreeObjectData(file, Tree)
+                file_data = TreeObjectData(full_path, Tree)
                 obj = Tree.initialize_from_directory(full_path)
             else:
-                file_data = TreeObjectData(file, Blob)
+                file_data = TreeObjectData(full_path, Blob)
                 with open(full_path, 'rb') as f:
                     obj = Blob(f.read())
 
@@ -112,6 +112,10 @@ class Tree(CVSObject):
 
 @dataclass(frozen=True)
 class TreeObjectData:
-    name: str
+    path: str
     object_type: type
+
+    @property
+    def name(self) -> str:
+        return os.path.basename(self.path)
 
