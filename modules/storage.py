@@ -1,7 +1,7 @@
 import os
 import abc
 
-import cvs_objects
+from modules.cvs_objects import CVSObject
 
 
 class KVStorage(metaclass=abc.ABCMeta):
@@ -33,21 +33,20 @@ class SimpleStorage(KVStorage):
             return f.read()
 
 
-# TODO: Visitor Pattern
+# Visitor
 class CVSStorage(SimpleStorage):
     @staticmethod
-    def store_object(item, item_hash, destination: str):
-        if isinstance(item, cvs_objects.CVSObject):
+    def store_object(item_hash: bytes, item_content: bytes, item_type: type, destination: str):
+        if isinstance(item_type, CVSObject):
             object_name = item_hash.hex()[2:]
             object_directory = CVSStorage.get_object_directory(destination, item_hash)
-            CVSStorage.store(object_name, item.serialize(), object_directory)
+            CVSStorage.store(object_name, item_content, object_directory)
         else:
             raise NotImplementedError
 
     @staticmethod
     def read_object(item_hash: bytes, item_type: type, source: str) -> bytes:
-        if issubclass(item_type, cvs_objects.CVSObject):
-            # item_hash = item.get_hash()
+        if issubclass(item_type, CVSObject):
             object_name = item_hash.hex()[2:]
             object_directory = CVSStorage.get_object_directory(source, item_hash)
             return CVSStorage.read(object_name, object_directory)
