@@ -48,7 +48,6 @@ def test_hash_changes_when_add_objects(commit, tree):
     assert prev_hash != curr_hash
 
 
-
 def test_derive_commit_save_tree_elements(commit, tree):
     objects = [
         [TreeObjectData('123', Blob), b'123'],
