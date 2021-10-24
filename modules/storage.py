@@ -2,6 +2,7 @@ import os
 import abc
 
 from modules.cvs_objects import CVSObject
+from modules.references import Reference
 
 
 class KVStorage(metaclass=abc.ABCMeta):
@@ -16,7 +17,7 @@ class KVStorage(metaclass=abc.ABCMeta):
         pass
 
 
-class SimpleStorage(KVStorage):
+class FolderStorage(KVStorage):
     @staticmethod
     def store(key: str, value: bytes, destination: str):
         os.makedirs(destination)
@@ -33,34 +34,40 @@ class SimpleStorage(KVStorage):
             return f.read()
 
 
-# Visitor
-class CVSStorage(SimpleStorage):
+# Visitor pattern
+class CVSStorage(FolderStorage):
     @staticmethod
-    def store_object(item_hash: bytes, item_content: bytes, item_type: type, destination: str):
-        if isinstance(item_type, CVSObject):
-            object_name = item_hash.hex()[2:]
-            object_directory = CVSStorage.get_object_directory(destination, item_hash)
-            CVSStorage.store(object_name, item_content, object_directory)
+    def store_object(name: str, content: bytes, obj_type: type, destination: str):
+        if issubclass(obj_type, CVSObject):
+            truncated_name = name[2:]
+            item_directory = CVSStorage.get_object_directory(destination, name)
+            CVSStorage.store(truncated_name, content, item_directory)
+        elif issubclass(obj_type, Reference):
+            CVSStorage.store(name, content, destination)
         else:
             raise NotImplementedError
 
     @staticmethod
-    def read_object(item_hash: bytes, item_type: type, source: str) -> bytes:
-        if issubclass(item_type, CVSObject):
-            object_name = item_hash.hex()[2:]
-            object_directory = CVSStorage.get_object_directory(source, item_hash)
-            return CVSStorage.read(object_name, object_directory)
+    def read_object(name: str, obj_type: type, source: str) -> bytes:
+        if issubclass(obj_type, CVSObject):
+            truncated_name = name[2:]
+            item_directory = CVSStorage.get_object_directory(source, name)
+            return CVSStorage.read(truncated_name, item_directory)
+        elif issubclass(obj_type, Reference):
+            content = CVSStorage.read(name, source)
+            if 'ref' in content.decode():
+                path = content.decode().split(' ')[0]
+                return CVSStorage.read(os.path.basename(path), os.path.dirname(path))
+
+            return content
         else:
             raise NotImplementedError
 
     @staticmethod
-    def get_object_directory(path_to_objects: str, object_hash: bytes) -> str:
-        return os.path.join(path_to_objects, object_hash.hex()[:2])
+    def get_object_directory(path_to_objects: str, name: str) -> str:
+        return os.path.join(path_to_objects, name[:2])
 
     @staticmethod
     def get_file_content(path: str):
         with open(path, 'rb') as f:
             return f.read()
-
-
-
