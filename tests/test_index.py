@@ -45,7 +45,7 @@ def commit(tree):
 
 
 def test_update_index_empty_directory(commit, index, tmpdir):
-    index.update_index(commit)
+    index.update(commit)
 
     assert index.removed == {}
     assert index.modified == {}
@@ -54,7 +54,7 @@ def test_update_index_empty_directory(commit, index, tmpdir):
 
 def test_update_index_empty_commit(commit, index, files, tmpdir):
     create_files(files)
-    index.update_index(commit)
+    index.update(commit)
 
     assert index.removed == {}
     assert index.modified == {}
@@ -64,7 +64,7 @@ def test_update_index_empty_commit(commit, index, files, tmpdir):
 def test_update_index_modified_files_not_in_folder(commit, index, files, tmpdir):
     create_files(files)
     commit.tree.children[TreeObjectData(files[0], Blob)] = b'wired hash'
-    index.update_index(commit)
+    index.update(commit)
 
     assert index.removed == {}
 
@@ -87,7 +87,7 @@ def test_update_index_modified_files_in_folder(commit, index, files, tmpdir):
     with patch('modules.cvs_objects.Tree.deserialize') as deserialize_patch:
         with patch('modules.storage.CVSStorage.read_object', side_effect=lambda *args: '') as read_patch:
             deserialize_patch.return_value = modified_tree
-            index.update_index(commit)
+            index.update(commit)
 
     assert index.removed == {}
 

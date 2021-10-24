@@ -65,7 +65,7 @@ class Commit(CVSObject):
 
 
 class Tree(CVSObject):
-    '''Tree is a collection of blobs and trees. Represents a folder'''
+    '''Tree is a collection of blobs and trees'''
     def __init__(self):
         self.children: dict[TreeObjectData, bytes] = {}
 
