@@ -109,7 +109,7 @@ def test_initialize_save_file_content(tmpdir, objects):
 
     tree = Tree.initialize_from_directory(tmpdir)
     for obj in objects:
-        data = TreeObjectData(obj, Blob)
+        data = TreeObjectData(os.path.join(tmpdir, obj), Blob)
         assert tree.children[data] == Blob(obj.encode()).get_hash()
 
 
@@ -125,7 +125,7 @@ def test_initialize_save_subdirectories(tmpdir):
 
     tree = Tree.initialize_from_directory(tmpdir)
     for subdir in subdirs:
-        data = TreeObjectData(subdir.split('/')[0], Tree)
+        data = TreeObjectData(os.path.join(tmpdir, subdir.split('/')[0]), Tree)
         sub_tree = build_tree_from_string(subdir)
 
         assert tree.children[data] == sub_tree.get_hash()
