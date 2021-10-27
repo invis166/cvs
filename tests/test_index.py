@@ -10,10 +10,8 @@ from modules.cvs_objects import Tree, Commit, Blob, TreeObjectData
 
 def create_files(files):
     for full_path in files:
-        # full_path = os.path.join(path + '/', file)
-        dr = os.path.dirname(full_path) + '/'
         os.makedirs(os.path.dirname(full_path) + '/', exist_ok=True)
-        with open(full_path, 'w') as f:
+        with open(full_path, 'w'):
             pass
 
 
@@ -85,7 +83,7 @@ def test_update_index_modified_files_in_folder(commit, index, files, tmpdir):
 
     commit.tree.children = {TreeObjectData(os.path.dirname(files[1]), Tree): modified_tree.get_hash()}
     with patch('modules.cvs_objects.Tree.deserialize') as deserialize_patch:
-        with patch('modules.storage.CVSStorage.read_object', side_effect=lambda *args: '') as read_patch:
+        with patch('modules.storage.CVSStorage.read_object', side_effect=lambda *args: ''):
             deserialize_patch.return_value = modified_tree
             index.update(commit)
 
@@ -96,9 +94,11 @@ def test_update_index_modified_files_in_folder(commit, index, files, tmpdir):
 
     from_dir = Tree.initialize_from_directory(tmpdir)
     from_dir_1 = Tree.initialize_from_directory(os.path.dirname(files[1]))
-    new_expected = {TreeObjectData(files[0], Blob): from_dir.children[TreeObjectData(files[0], Blob)],
-                    TreeObjectData(files[2], Blob): from_dir.children[TreeObjectData(files[0], Blob)],
-                    TreeObjectData(os.path.dirname(files[3]), Tree): from_dir_1.children[TreeObjectData(os.path.dirname(files[3]), Tree)]}
+    new_expected = {
+        TreeObjectData(files[0], Blob): from_dir.children[TreeObjectData(files[0], Blob)],
+        TreeObjectData(files[2], Blob): from_dir.children[TreeObjectData(files[0], Blob)],
+        TreeObjectData(os.path.dirname(files[3]), Tree): from_dir_1.children[TreeObjectData(os.path.dirname(files[3]), Tree)]
+    }
     assert index.new == new_expected
 
 
@@ -117,7 +117,7 @@ def test_update_index_modified_whole_folder(commit, index, files, tmpdir):
     with patch('modules.cvs_objects.Tree.deserialize',
                side_effect=lambda arg: objects_map[arg]):
         with patch('modules.storage.CVSStorage.read_object', side_effect=lambda *args: args[2]):
-            index.update_index(commit)
+            index.update(commit)
 
     assert index.removed == {}
 
@@ -136,23 +136,16 @@ def test_update_index_remove_file(commit, index, files, tmpdir):
 
     commit.tree = Tree.initialize_from_directory(tmpdir)
     os.remove(files[0])
-    index.update_index(commit)
+    index.update(commit)
 
     assert TreeObjectData(files[0], Blob) in index.removed and len(index.removed) == 1
 
 
-def test_update_index_remove_directory(commit, index, files, tmpdir):
-    create_files(files)
-
-    commit.tree = Tree.initialize_from_directory(tmpdir)
-    rmtree(os.path.dirname(files[1]))
-    index.update_index(commit)
-
-    assert TreeObjectData(os.path.dirname(files[1]), Tree) in index.removed and len(index.removed) == 1
-
-
-def test_enumerate_directory(files, tmpdir):
-    create_files(files)
-
-    assert set(Index._enumerate_directory(tmpdir)) == set(files)
-
+# def test_update_index_remove_directory(commit, index, files, tmpdir):
+#     create_files(files)
+#
+#     commit.tree = Tree.initialize_from_directory(tmpdir)
+#     rmtree(os.path.dirname(files[1]))
+#     index.update(commit)
+#
+#     assert TreeObjectData(os.path.dirname(files[1]), Tree) in index.removed and len(index.removed) ==
