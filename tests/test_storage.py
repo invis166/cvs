@@ -82,4 +82,6 @@ def test_read_tree_blobsAfterStoreSameContent(tree_with_children, blob1, blob2, 
     assert blob2_from_disk.content == blob2.content
 
 
-
+def test_store_the_same_object_dont_throws(blob1, tmpdir):
+    CVSStorage.store_object(blob1.get_hash().hex(), blob1.serialize(), Blob, tmpdir)
+    CVSStorage.store_object(blob1.get_hash().hex(), blob1.serialize(), Blob, tmpdir)
