@@ -1,7 +1,7 @@
 import abc
 
-from cvs_objects import CVSObject, Commit
-from folders_enum import FoldersEnum
+from modules.cvs_objects import CVSObject, Commit
+from modules.folders_enum import FoldersEnum
 
 
 class Reference(abc.ABC):

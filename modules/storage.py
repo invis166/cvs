@@ -20,7 +20,7 @@ class KVStorage(metaclass=abc.ABCMeta):
 class FolderStorage(KVStorage):
     @staticmethod
     def store(key: str, value: bytes, destination: str):
-        os.makedirs(destination)
+        os.makedirs(destination + '/', exist_ok=True)
         with open(os.path.join(destination, key), 'wb') as f:
             f.write(value)
 
