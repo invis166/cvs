@@ -1,8 +1,8 @@
 import os
 import abc
 
-from cvs_objects import CVSObject
-from references import Reference
+from modules.cvs_objects import CVSObject
+from modules.references import Reference
 
 
 class KVStorage(metaclass=abc.ABCMeta):

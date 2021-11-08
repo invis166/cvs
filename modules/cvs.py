@@ -1,3 +1,4 @@
+import itertools
 import os
 from dataclasses import dataclass
 
@@ -14,7 +15,8 @@ class CVS:
         self.head: Head = None
         self.branches: list[Branch] = []
         self.path_to_repository = path
-        self.ignore: set[str] = set(os.path.join(path, FoldersEnum.HEAD))
+        self.ignore: set[TreeObjectData] = {TreeObjectData(os.path.join(path, FoldersEnum.CVS_DATA), Tree)}
+        self.index.ignore = self.ignore
 
         self._full_path_to_objects = os.path.join(path, FoldersEnum.OBJECTS)
         self._full_path_to_references = os.path.join(path, FoldersEnum.REFS)
@@ -27,6 +29,7 @@ class CVS:
             return
 
         # Creating internal files and directories
+        os.mkdir(os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
         os.mkdir(self._full_path_to_objects)
         os.mkdir(self._full_path_to_references)
         os.mkdir(os.path.join(self.path_to_repository, FoldersEnum.TAGS))
@@ -36,13 +39,32 @@ class CVS:
             pass
 
         commit = Commit(Tree())
-        self.head = Head(Branch('master', commit))
+        CVSStorage.store_object(commit.get_hash().hex(),
+                                commit.serialize(),
+                                Commit,
+                                self._full_path_to_objects)
+        branch = Branch('master', commit)
+        CVSStorage.store_object(branch.name,
+                                branch.get_pointer().hex().encode(),
+                                Branch,
+                                os.path.join(self.path_to_repository, FoldersEnum.HEADS))
+        self.head = Head(branch)
+        CVSStorage.store_object('HEAD',
+                                self.head.get_pointer(),
+                                Head,
+                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
         self.index.update(commit)
 
     def add_to_staged(self, path: str):
-        if path not in self.index.modified or path not in self.index.removed or path in self.ignore:
+        if os.path.isdir(path):
+            item = TreeObjectData(path, Tree)
+        else:
+            item = TreeObjectData(path, Blob)
+        if item not in self.index.new and item not in self.index.modified and item not in self.index.removed \
+                or item in self.ignore or item in self.index.staged:
             return
-        self.index.staged.add(path)
+
+        self.index.staged.add(item)
 
     def make_commit(self):
         if not self.index.staged:
@@ -57,19 +79,20 @@ class CVS:
         head, branch = self._move_head_to_commit(new_commit)
         if branch:
             CVSStorage.store_object(branch.name,
-                                    branch.get_pointer(),
+                                    branch.get_pointer().hex().encode(),
                                     Branch,
-                                    os.path.join(self._full_path_to_references, FoldersEnum.REFS))
+                                    os.path.join(self.path_to_repository, FoldersEnum.HEADS))
         CVSStorage.store_object('HEAD',
                                 self.head.get_pointer(),
                                 Head,
-                                self._full_path_to_references)
+                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
 
         self.index.staged = set()
 
     @staticmethod
     def is_repository_exists(path_to_repository: str) -> bool:
         path_to_cvs_data = os.path.join(path_to_repository, FoldersEnum.CVS_DATA)
+
         return os.path.isdir(path_to_cvs_data)
 
     def _move_head_to_commit(self, commit: Commit) -> tuple:
@@ -82,16 +105,26 @@ class CVS:
     def _initialize_head(self):
         self.head = Head(self._initialize_commit_from_head())
 
-    def _initialize_commit_from_head(self):
-        return Commit.deserialize(CVSStorage.read_object('HEAD',
-                                                         Reference,
-                                                         os.path.join(self.path_to_repository, FoldersEnum.HEAD)))
+    def _initialize_commit_from_head(self) -> Commit:
+        head = CVSStorage.read_object('HEAD',
+                                       Reference,
+                                       os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+        if head.decode().startswith('ref'):
+            branch_name = os.path.basename(head.decode())
+            commit_hash = CVSStorage.read_object(
+                branch_name, Branch, os.path.join(self.path_to_repository, FoldersEnum.HEADS))
+            raw_commit = CVSStorage.read_object(commit_hash.decode(), Commit, self._full_path_to_objects)
+        else:
+            raw_commit = CVSStorage.read_object(head.decode(), Commit, self._full_path_to_objects)
+
+        return Commit.deserialize(raw_commit)
 
 
 class Index:
     def __init__(self, directory: str):
         self.directory = directory
-        self.staged = set()
+        self.ignore: set[TreeObjectData] = set()
+        self.staged: set[TreeObjectData] = set()
         self.modified: dict[TreeObjectData, bytes] = {}
         self.removed: dict[TreeObjectData, bytes] = {}
         self.new: dict[TreeObjectData, bytes] = {}
@@ -130,9 +163,10 @@ class Index:
 
     def update(self, commit: "Commit"):
         comp_res = Index.compare_trees(Tree.initialize_from_directory(self.directory), commit.tree)
-        self.new = comp_res.in_first
-        self.removed = comp_res.in_second
-        self.modified = comp_res.different
+        not_in_ignore = lambda x: x not in self.ignore
+        self.new = set(filter(not_in_ignore, comp_res.in_first))
+        self.removed = set(filter(not_in_ignore, comp_res.in_second))
+        self.modified = set(filter(not_in_ignore, comp_res.different))
 
 
 @dataclass
