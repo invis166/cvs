@@ -1,6 +1,9 @@
 import cmd
 import os
+
 from folders_enum import FoldersEnum
+from cvs import CVS
+from helpers import Helpers
 
 
 class CVSShell(cmd.Cmd):
@@ -9,24 +12,59 @@ class CVSShell(cmd.Cmd):
 
     def __init__(self):
         super(CVSShell, self).__init__()
-        self.repository_directory = None
-        self._set_working_directory(os.getcwd())
         self.cvs = None
+        self.path_to_repository = None
+        self.working_directory = os.getcwd()
+        self.do_cd(self.working_directory)
 
     def do_init(self, arg: str):
         '''Initialize repository'''
-        print('not implemented')
+        if CVS.is_repository_exists(self.working_directory):
+            return
+
+        self.cvs = CVS(self.working_directory)
+        self.cvs.initialize_repository()
+        self.path_to_repository = self.working_directory
+
+        print(f'initialized repository at {self.working_directory}')
 
     def do_commit(self, arg: str):
         '''Create a new commit'''
-        print('not implemented')
+        self.cvs.make_commit()
 
     def do_status(self, arg: str):
         '''Show an index'''
-        print('not implemented')
+        if not self.path_to_repository:
+            print('not a repository')
+            return
+
+        head_commit = self.cvs._initialize_commit_from_head()
+        self.cvs.index.update(head_commit)
+        staged_filter = lambda x: x not in self.cvs.index.staged
+        for new in filter(staged_filter, self.cvs.index.new):
+            print(f'new: {new}')
+        for removed in filter(staged_filter, self.cvs.index.removed):
+            print(f'removed: {removed}')
+        for modified in filter(staged_filter, self.cvs.index.modified):
+            print(f'modified: {modified}')
+        for staged in self.cvs.index.staged:
+            print(f'staged: {staged}')
+
+    def do_add(self, arg: str):
+        head_commit = self.cvs._initialize_commit_from_head()
+        self.cvs.index.update(head_commit)
+
+        if arg == '.':
+            to_add = os.listdir('.')
+        else:
+            to_add = arg.split(' ')
+        for path in map(os.path.abspath, to_add):
+            if os.path.isdir(path):
+                path = os.path.join(path, '')
+            self.cvs.add_to_staged(path)
 
     def do_ls(self, arg: str):
-        for item in os.listdir(self.current_directory):
+        for item in os.listdir(self.working_directory):
             print(item)
 
     def do_cd(self, arg: str):
@@ -34,10 +72,19 @@ class CVSShell(cmd.Cmd):
         directory = os.path.abspath(arg)
         if not os.path.exists(directory):
             print(f'can not find directory: {directory}')
-        else:
-            if self._is_directory_a_repository(directory):
-                self.repository_directory = directory
-            self._set_working_directory(directory)
+            return
+
+        self._set_working_directory(directory)
+        if CVS.is_repository_exists(directory):
+            # перешли в папку с репозиторием
+            self.cvs = CVS(directory)
+            self.cvs.initialize_repository()
+            self.path_to_repository = directory
+        elif self.path_to_repository \
+                and os.path.commonprefix([directory, self.path_to_repository]) != self.path_to_repository:
+            # покинули папку с репозиторием
+            self.cvs = None
+            self.path_to_repository = None
 
     def do_mkdir(self, arg: str):
         '''Create new directory'''
@@ -47,13 +94,9 @@ class CVSShell(cmd.Cmd):
             print(f'directory {os.path.realpath(arg)} already exists')
 
     def _set_working_directory(self, directory: str):
-        self.current_directory = os.path.abspath(directory)
-        os.chdir(self.current_directory)
-        CVSShell.prompt = f'{self.current_directory}$ '
-
-    @staticmethod
-    def _is_directory_a_repository(directory) -> bool:
-        return os.path.exists(os.path.join(os.path.abspath(directory), FoldersEnum.CVS_DATA))
+        self.working_directory = os.path.abspath(directory)
+        os.chdir(self.working_directory)
+        CVSShell.prompt = f'{self.working_directory}$ '
 
 
 if __name__ == '__main__':
