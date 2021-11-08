@@ -1,8 +1,8 @@
 import os
 import abc
 
-from modules.cvs_objects import CVSObject
-from modules.references import Reference
+from cvs_objects import CVSObject
+from references import Reference
 
 
 class KVStorage(metaclass=abc.ABCMeta):
@@ -55,9 +55,6 @@ class CVSStorage(FolderStorage):
             return CVSStorage.read(truncated_name, item_directory)
         elif issubclass(obj_type, Reference):
             content = CVSStorage.read(name, source)
-            if 'ref' in content.decode():
-                path = content.decode().split(' ')[0]
-                return CVSStorage.read(os.path.basename(path), os.path.dirname(path))
 
             return content
         else:
