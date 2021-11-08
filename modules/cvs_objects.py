@@ -23,15 +23,16 @@ class CVSObject(abc.ABC):
 
 class Blob(CVSObject):
     '''Blob is a file container'''
-    def __init__(self, content: bytes):
+    def __init__(self, content: bytes, is_removed=False):
         self.content = content
+        self.is_removed = is_removed
 
     def serialize(self) -> bytes:
-        return self.content
+        return pickle.dumps(self)
 
     @staticmethod
     def deserialize(content: bytes) -> "Blob":
-        return Blob(content)
+        return pickle.loads(content)
 
     def get_hash(self) -> bytes:
         header = b'blob #\0'
@@ -41,9 +42,10 @@ class Blob(CVSObject):
 
 class Commit(CVSObject):
     '''Commit is reference to a top-level tree'''
-    def __init__(self, tree: "Tree"):
+    def __init__(self, tree: "Tree", message=''):
         self.tree = tree
         self.parent_commit: Commit = self
+        self.message = message
 
     def derive_commit(self, tree: "Tree") -> "Commit":
         commit = Commit(tree)
@@ -66,8 +68,9 @@ class Commit(CVSObject):
 
 class Tree(CVSObject):
     '''Tree is a collection of blobs and trees'''
-    def __init__(self):
+    def __init__(self, is_removed=False):
         self.children: dict[TreeObjectData, bytes] = {}
+        self.is_removed = is_removed
 
     def add_object(self, data: "TreeObjectData", object_hash: bytes):
         self.children[data] = object_hash
@@ -98,6 +101,7 @@ class Tree(CVSObject):
         for file in os.listdir(directory):
             full_path = os.path.join(directory, file)
             if os.path.isdir(full_path):
+                full_path = os.path.join(full_path, '')
                 file_data = TreeObjectData(full_path, Tree)
                 obj = Tree.initialize_from_directory(full_path)
             else:
@@ -118,4 +122,3 @@ class TreeObjectData:
     @property
     def name(self) -> str:
         return os.path.basename(self.path)
-
