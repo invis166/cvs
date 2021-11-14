@@ -23,9 +23,8 @@ class CVS:
 
     def initialize_repository(self):
         if CVS.is_repository_exists(self.path_to_repository):
-            # initializing refs
             self._initialize_head()
-            self.index.update(self._initialize_commit_from_head())
+            self.update_index()
             return
 
         # Creating internal files and directories
@@ -38,6 +37,7 @@ class CVS:
         with open(os.path.join(self.path_to_repository, FoldersEnum.HEAD), 'w'):
             pass
 
+        # initialize commit and head and store them
         commit = Commit(Tree())
         CVSStorage.store_object(commit.get_hash().hex(),
                                 commit.serialize(),
@@ -53,18 +53,15 @@ class CVS:
                                 self.head.get_pointer(),
                                 Head,
                                 os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
-        self.index.update(commit)
 
-    def add_to_staged(self, path: str):
-        if os.path.isdir(path):
-            item = TreeObjectData(path, Tree)
-        else:
-            item = TreeObjectData(path, Blob)
-        if item not in self.index.new and item not in self.index.modified and item not in self.index.removed \
-                or item in self.ignore or item in self.index.staged:
+        self.update_index()
+
+    def add_to_staged(self, data: TreeObjectData):
+        if data not in self.index.new and data not in self.index.modified and data not in self.index.removed \
+                or data in self.ignore or data in self.index.staged:
             return
 
-        self.index.staged.add(item)
+        self.index.staged.add(data)
 
     def make_commit(self):
         if not self.index.staged:
@@ -89,6 +86,34 @@ class CVS:
 
         self.index.staged = set()
 
+    def get_full_tree_state(self, commit: Commit) -> Tree:
+        # -> a b c -> a b -> a` -> c`
+        # c` a` c# b c
+        full_tree = Tree()
+        full_tree.children = commit.tree.children.copy()
+        removed = set(filter(lambda x: x.is_removed, commit.tree.children))
+        current_commit = commit
+        while current_commit.parent_commit_hash != b'':
+            prev_commit = Commit.deserialize(CVSStorage.read_object(current_commit.parent_commit_hash.hex(), Commit, self._full_path_to_objects))
+            for item in prev_commit.tree.children:
+                item_with_is_removed = TreeObjectData(item.path, item.object_type, is_removed=True)
+                item_without_is_removed = TreeObjectData(item.path, item.object_type, is_removed=False)
+                if item_with_is_removed in removed:
+                    continue
+                elif item_without_is_removed in full_tree.children:
+                    continue
+
+                if item.is_removed:
+                    removed.add(item)
+                full_tree.children[item] = prev_commit.tree.children[item]
+            current_commit = prev_commit
+
+        return full_tree
+
+    def update_index(self):
+        head_commit = self._initialize_commit_from_head()
+        self.index.update(self.get_full_tree_state(head_commit))
+
     @staticmethod
     def is_repository_exists(path_to_repository: str) -> bool:
         path_to_cvs_data = os.path.join(path_to_repository, FoldersEnum.CVS_DATA)
@@ -103,21 +128,29 @@ class CVS:
             return Head(commit), None
 
     def _initialize_head(self):
-        self.head = Head(self._initialize_commit_from_head())
+        item = self._get_head_reference()
+        self.head = Head(item)
 
     def _initialize_commit_from_head(self) -> Commit:
-        head = CVSStorage.read_object('HEAD',
-                                       Reference,
-                                       os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
-        if head.decode().startswith('ref'):
-            branch_name = os.path.basename(head.decode())
+        item = self._get_head_reference()
+        if isinstance(item, Commit):
+            return item
+        else:
+            return item.commit
+
+    def _get_head_reference(self):
+        head_reference = CVSStorage.read_object('HEAD',
+                                                Reference,
+                                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+        if head_reference.decode().startswith('ref'):
+            branch_name = os.path.basename(head_reference.decode())
             commit_hash = CVSStorage.read_object(
                 branch_name, Branch, os.path.join(self.path_to_repository, FoldersEnum.HEADS))
             raw_commit = CVSStorage.read_object(commit_hash.decode(), Commit, self._full_path_to_objects)
+            return Branch(branch_name, Commit.deserialize(raw_commit))
         else:
-            raw_commit = CVSStorage.read_object(head.decode(), Commit, self._full_path_to_objects)
-
-        return Commit.deserialize(raw_commit)
+            raw_commit = CVSStorage.read_object(head_reference.decode(), Commit, self._full_path_to_objects)
+            return Commit.deserialize(raw_commit)
 
 
 class Index:
@@ -161,12 +194,17 @@ class Index:
 
         return res
 
-    def update(self, commit: "Commit"):
-        comp_res = Index.compare_trees(Tree.initialize_from_directory(self.directory), commit.tree)
-        not_in_ignore = lambda x: x not in self.ignore
-        self.new = set(filter(not_in_ignore, comp_res.in_first))
-        self.removed = set(filter(not_in_ignore, comp_res.in_second))
-        self.modified = set(filter(not_in_ignore, comp_res.different))
+    def update(self, tree: Tree):
+        dir_tree = Tree.initialize_from_directory(self.directory)
+        filtered_dir_tree = Tree()
+        filtered_dir_tree.children = {k: v for k, v in dir_tree.children.items() if k not in self.ignore}
+
+        comp_res = Index.compare_trees(filtered_dir_tree, tree)
+        self.new = comp_res.in_first
+        # если объект не найден и он помечен удаленным, то он нам не нужен
+        self.removed = {k: v for k, v in comp_res.in_second.items()
+                        if TreeObjectData(k.path, k.object_type, is_removed=True) not in tree.children}
+        self.modified = comp_res.different
 
 
 @dataclass
