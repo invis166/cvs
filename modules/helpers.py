@@ -1,7 +1,7 @@
 import os
 
-from cvs_objects import Tree, TreeObjectData, Blob
-from storage import CVSStorage
+from modules.cvs_objects import Tree, TreeObjectData, Blob
+from modules.storage import CVSStorage
 
 
 class Helpers:
@@ -32,18 +32,21 @@ class Helpers:
             if os.path.isdir(path):
                 if os.path.exists(path):
                     obj = Helpers.initialize_and_store_tree_from_directory(path, destination)
+                    obj_data = TreeObjectData(path, Tree)
                 else:
-                    obj = Tree(is_removed=True)
-                obj_data = TreeObjectData(path, Tree)
+                    obj = Tree()
+                    obj_data = TreeObjectData(path, Tree, is_removed=True)
             else:
-                obj_data = TreeObjectData(path, Blob)
                 if os.path.exists(path):
+                    obj_data = TreeObjectData(path, Blob)
                     with open(path, 'rb') as f:
                         obj = Blob(f.read())
                         CVSStorage.store_object(obj.get_hash().hex(), obj.serialize(), Blob, destination)
                 else:
-                    obj = Blob(b'', is_removed=True)
-            tree.add_object(obj_data, obj.get_hash())
+                    obj = Blob(b'')
+                    obj_data = TreeObjectData(path, Blob, is_removed=True)
+
+            tree.add_object(obj_data, b'' if obj_data.is_removed else obj.get_hash())
 
         return tree
 
