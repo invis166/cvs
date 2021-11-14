@@ -4,6 +4,7 @@ import os
 from folders_enum import FoldersEnum
 from cvs import CVS
 from helpers import Helpers
+from modules.cvs_objects import Tree, TreeObjectData, Blob
 
 
 class CVSShell(cmd.Cmd):
@@ -38,8 +39,7 @@ class CVSShell(cmd.Cmd):
             print('not a repository')
             return
 
-        head_commit = self.cvs._initialize_commit_from_head()
-        self.cvs.index.update(head_commit)
+        self.cvs.update_index()
         staged_filter = lambda x: x not in self.cvs.index.staged
         for new in filter(staged_filter, self.cvs.index.new):
             print(f'new: {new}')
@@ -51,17 +51,17 @@ class CVSShell(cmd.Cmd):
             print(f'staged: {staged}')
 
     def do_add(self, arg: str):
-        head_commit = self.cvs._initialize_commit_from_head()
-        self.cvs.index.update(head_commit)
-
+        self.cvs.update_index()
         if arg == '.':
             to_add = os.listdir('.')
         else:
             to_add = arg.split(' ')
         for path in map(os.path.abspath, to_add):
             if os.path.isdir(path):
-                path = os.path.join(path, '')
-            self.cvs.add_to_staged(path)
+                data = TreeObjectData(os.path.join(path, ''), Tree)
+            else:
+                data = TreeObjectData(path, Blob)
+            self.cvs.add_to_staged(data)
 
     def do_ls(self, arg: str):
         for item in os.listdir(self.working_directory):
