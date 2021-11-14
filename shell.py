@@ -53,7 +53,7 @@ class CVSShell(cmd.Cmd):
     def do_add(self, arg: str):
         self.cvs.update_index()
         if arg == '.':
-            to_add = os.listdir('.')
+            to_add = os.listdir('modules')
         else:
             to_add = arg.split(' ')
         for path in map(os.path.abspath, to_add):
