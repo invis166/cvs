@@ -125,7 +125,8 @@ def test_initialize_save_subdirectories(tmpdir):
 
     tree = Tree.initialize_from_directory(tmpdir)
     for subdir in subdirs:
-        data = TreeObjectData(os.path.join(tmpdir, subdir.split('/')[0]), Tree)
+        full_path = os.path.join(tmpdir, subdir)
+        data = TreeObjectData(os.path.join(tmpdir, subdir.split('/')[0], ''), Tree)
         sub_tree = build_tree_from_string(subdir)
 
         assert tree.children[data] == sub_tree.get_hash()

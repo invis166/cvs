@@ -13,10 +13,10 @@ def commit(tree):
     return Commit(tree)
 
 
-def test_derive_commit_save_parent_commit(commit, tree):
+def test_derive_commit_save_parent_commit_hash(commit, tree):
     derived = commit.derive_commit(tree)
 
-    assert derived.parent_commit == commit
+    assert derived.parent_commit_hash == commit.get_hash()
 
 
 def test_hash_properly_when_empty(commit):
