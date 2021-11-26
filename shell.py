@@ -103,7 +103,7 @@ class CVSShell(cmd.Cmd):
         except FileNotFoundError:
             print(f'can not find commit with hash {arg}')
             return
-        head, branch = self.cvs.move_head_to_commit(commit)
+        head, branch = self.cvs.move_head_with_branch_to_commit(commit)
         self.cvs.head = head
         self.cvs.store_head()
         if branch:

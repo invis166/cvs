@@ -73,10 +73,10 @@ class CVS:
         CVSStorage.store_object(new_commit.get_hash().hex(), new_commit.serialize(), Commit, self._full_path_to_objects)
 
         # move head and branch to new commit and store them
-        head, branch = self.move_head_to_commit(new_commit)
-        if branch:
-            self.store_branch(branch)
+        self.head = self.move_head_with_branch_to_commit(new_commit)
         self.store_head()
+        if self.head.is_point_to_branch:
+            self.store_branch(self.head.branch)
 
         self.index.staged = set()
 
@@ -111,12 +111,12 @@ class CVS:
 
         return Commit.deserialize(raw_commit)
 
-    def move_head_to_commit(self, commit: Commit) -> tuple:
+    def move_head_with_branch_to_commit(self, commit: Commit) -> Head:
         if self.head.is_point_to_branch:
             new_branch = Branch(self.head.branch.name, commit)
-            return Head(new_branch), new_branch
+            return Head(new_branch)
         else:
-            return Head(commit), None
+            return Head(commit)
 
     def store_head(self):
         CVSStorage.store_object('HEAD',
