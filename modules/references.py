@@ -21,7 +21,7 @@ class Branch(Reference):
 
 
 class Head(Reference):
-    '''Head is a reference to a current branch'''
+    '''Head is a reference to a current branch or commit'''
     def __init__(self, item):
         self.item = item
         self.is_point_to_branch = isinstance(item, Branch)
