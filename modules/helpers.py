@@ -29,15 +29,15 @@ class Helpers:
         tree = Tree()
         for data in collection:
             path = data.path
-            if os.path.isdir(path):
-                if os.path.exists(path):
+            if data.object_type == Tree:
+                if not data.is_removed:
                     obj = Helpers.initialize_and_store_tree_from_directory(path, destination)
                     obj_data = TreeObjectData(path, Tree)
                 else:
                     obj = Tree()
                     obj_data = TreeObjectData(path, Tree, is_removed=True)
             else:
-                if os.path.exists(path):
+                if not data.is_removed:
                     obj_data = TreeObjectData(path, Blob)
                     with open(path, 'rb') as f:
                         obj = Blob(f.read())
