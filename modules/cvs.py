@@ -73,22 +73,14 @@ class CVS:
         CVSStorage.store_object(new_commit.get_hash().hex(), new_commit.serialize(), Commit, self._full_path_to_objects)
 
         # move head and branch to new commit and store them
-        head, branch = self._move_head_to_commit(new_commit)
+        head, branch = self.move_head_to_commit(new_commit)
         if branch:
-            CVSStorage.store_object(branch.name,
-                                    branch.get_pointer().hex().encode(),
-                                    Branch,
-                                    os.path.join(self.path_to_repository, FoldersEnum.HEADS))
-        CVSStorage.store_object('HEAD',
-                                self.head.get_pointer(),
-                                Head,
-                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+            self.store_branch(branch)
+        self.store_head()
 
         self.index.staged = set()
 
     def get_full_tree_state(self, commit: Commit) -> Tree:
-        # -> a b c -> a b -> a` -> c`
-        # c` a` c# b c
         full_tree = Tree()
         full_tree.children = commit.tree.children.copy()
         removed = set(filter(lambda x: x.is_removed, commit.tree.children))
@@ -114,18 +106,35 @@ class CVS:
         head_commit = self._initialize_commit_from_head()
         self.index.update(self.get_full_tree_state(head_commit))
 
-    @staticmethod
-    def is_repository_exists(path_to_repository: str) -> bool:
-        path_to_cvs_data = os.path.join(path_to_repository, FoldersEnum.CVS_DATA)
+    def get_commit_by_hash(self, commit_hash: str):
+        raw_commit = CVSStorage.read_object(commit_hash, Commit, self._full_path_to_objects)
 
-        return os.path.isdir(path_to_cvs_data)
+        return Commit.deserialize(raw_commit)
 
-    def _move_head_to_commit(self, commit: Commit) -> tuple:
+    def move_head_to_commit(self, commit: Commit) -> tuple:
         if self.head.is_point_to_branch:
             new_branch = Branch(self.head.branch.name, commit)
             return Head(new_branch), new_branch
         else:
             return Head(commit), None
+
+    def store_head(self):
+        CVSStorage.store_object('HEAD',
+                                self.head.get_pointer(),
+                                Head,
+                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+
+    def store_branch(self, branch: Branch):
+        CVSStorage.store_object(branch.name,
+                                branch.get_pointer().hex().encode(),
+                                Branch,
+                                os.path.join(self.path_to_repository, FoldersEnum.HEADS))
+
+    @staticmethod
+    def is_repository_exists(path_to_repository: str) -> bool:
+        path_to_cvs_data = os.path.join(path_to_repository, FoldersEnum.CVS_DATA)
+
+        return os.path.isdir(path_to_cvs_data)
 
     def _initialize_head(self):
         item = self._get_head_reference()
@@ -202,8 +211,9 @@ class Index:
         comp_res = Index.compare_trees(filtered_dir_tree, tree)
         self.new = comp_res.in_first
         # если объект не найден и он помечен удаленным, то он нам не нужен
-        self.removed = {k: v for k, v in comp_res.in_second.items()
-                        if TreeObjectData(k.path, k.object_type, is_removed=True) not in tree.children}
+        self.removed = {TreeObjectData(data.path, data.object_type, is_removed=True): v
+                        for data, v in comp_res.in_second.items()
+                        if TreeObjectData(data.path, data.object_type, is_removed=True) not in tree.children}
         self.modified = comp_res.different
 
 

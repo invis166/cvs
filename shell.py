@@ -1,9 +1,9 @@
 import cmd
 import os
 
-from folders_enum import FoldersEnum
-from cvs import CVS
-from helpers import Helpers
+from modules.folders_enum import FoldersEnum
+from modules.cvs import CVS
+from modules.helpers import Helpers
 from modules.cvs_objects import Tree, TreeObjectData, Blob
 
 
@@ -51,19 +51,22 @@ class CVSShell(cmd.Cmd):
             print(f'staged: {staged}')
 
     def do_add(self, arg: str):
+        '''Add specified file to a commit'''
         self.cvs.update_index()
         if arg == '.':
             to_add = os.listdir('modules')
         else:
             to_add = arg.split(' ')
-        for path in map(os.path.abspath, to_add):
-            if os.path.isdir(path):
-                data = TreeObjectData(os.path.join(path, ''), Tree)
+        for path in map(lambda path: os.path.join(self.path_to_repository, path), to_add):
+            is_removed = not os.path.exists(path)
+            if os.path.isdir(path) or is_removed and path.endswith(os.path.sep):
+                data = TreeObjectData(os.path.join(path, ''), Tree, is_removed=is_removed)
             else:
-                data = TreeObjectData(path, Blob)
+                data = TreeObjectData(path, Blob, is_removed=is_removed)
             self.cvs.add_to_staged(data)
 
     def do_ls(self, arg: str):
+        '''Show all files in specified directory'''
         for item in os.listdir(self.working_directory):
             print(item)
 
@@ -92,6 +95,19 @@ class CVSShell(cmd.Cmd):
             os.mkdir(os.path.abspath(arg))
         except FileExistsError:
             print(f'directory {os.path.realpath(arg)} already exists')
+
+    def do_reset(self, arg):
+        '''Move head and current branch to specified commit'''
+        try:
+            commit = self.cvs.get_commit_by_hash(arg)
+        except FileNotFoundError:
+            print(f'can not find commit with hash {arg}')
+            return
+        head, branch = self.cvs.move_head_to_commit(commit)
+        self.cvs.head = head
+        self.cvs.store_head()
+        if branch:
+            self.cvs.store_branch(branch)
 
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)
