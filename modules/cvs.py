@@ -106,10 +106,17 @@ class CVS:
         head_commit = self._initialize_commit_from_head()
         self.index.update(self.get_full_tree_state(head_commit))
 
-    def get_commit_by_hash(self, commit_hash: str):
+    def get_commit_by_hash(self, commit_hash: str) -> Commit:
         raw_commit = CVSStorage.read_object(commit_hash, Commit, self._full_path_to_objects)
 
         return Commit.deserialize(raw_commit)
+
+    def get_branch_by_name(self, branch_name: str) -> Branch:
+        commit_hash = CVSStorage.read_object(branch_name,
+                                            Branch,
+                                            os.path.join(self.path_to_repository, FoldersEnum.HEADS))
+
+        return Branch(branch_name, Commit.deserialize(commit_hash))
 
     def move_head_with_branch_to_commit(self, commit: Commit) -> Head:
         if self.head.is_point_to_branch:

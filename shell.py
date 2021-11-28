@@ -5,6 +5,7 @@ from modules.folders_enum import FoldersEnum
 from modules.cvs import CVS
 from modules.helpers import Helpers
 from modules.cvs_objects import Tree, TreeObjectData, Blob
+from modules.references import Head
 
 
 class CVSShell(cmd.Cmd):
@@ -103,11 +104,28 @@ class CVSShell(cmd.Cmd):
         except FileNotFoundError:
             print(f'can not find commit with hash {arg}')
             return
-        head, branch = self.cvs.move_head_with_branch_to_commit(commit)
+
+        head = self.cvs.move_head_with_branch_to_commit(commit)
         self.cvs.head = head
         self.cvs.store_head()
-        if branch:
-            self.cvs.store_branch(branch)
+        if self.cvs.head.is_point_to_branch:
+            self.cvs.store_branch(self.cvs.head.branch)
+
+    def do_switch(self, arg: str):
+        '''Move head to a branch'''
+        branch = self.cvs.get_branch_by_name(arg)
+        self.cvs.head = Head(branch)
+        self.cvs.store_head()
+
+    def do_checkout(self, arg: str):
+        '''Move head to a commit'''
+        try:
+            commit = self.cvs.get_commit_by_hash(arg)
+        except FileNotFoundError:
+            print(f'can not find commit with hash {arg}')
+            return
+        self.cvs.head = Head(commit)
+        self.cvs.store_head()
 
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)
