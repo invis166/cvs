@@ -56,7 +56,7 @@ class CVSShell(cmd.Cmd):
         '''Add specified file to a commit'''
         self.cvs.update_index()
         if arg == '.':
-            to_add = os.listdir('modules')
+            to_add = os.listdir('.')
         else:
             to_add = arg.split(' ')
         for path in map(lambda path: os.path.join(self.path_to_repository, path), to_add):
