@@ -32,7 +32,8 @@ class CVSShell(cmd.Cmd):
 
     def do_commit(self, arg: str):
         '''Create a new commit'''
-        self.cvs.make_commit()
+        arg = arg.strip()
+        self.cvs.make_commit(arg)
 
     def do_status(self, arg: str):
         '''Show an index'''
@@ -130,13 +131,25 @@ class CVSShell(cmd.Cmd):
     def do_tag(self, arg: str):
         '''Create/Delete tag'''
         arg = arg.split(' ')
-        if len(arg) != 2:
+        if len(arg) < 2:
             print('invalid arguments')
             return
-        if arg[0] == '-c':
-            self.cvs.create_tag(arg[1])
-        elif arg[0] == '-d':
-            self.cvs.delete_tag(arg[1])
+        tag_name = arg[1]
+        command = arg[0]
+
+        if command == '-c':
+            message = ''
+            if len(arg) == 3:
+                message = arg[2]
+            elif len(arg) > 3:
+                print('invalid arguments')
+                return
+            self.cvs.create_tag(tag_name, message)
+        elif command == '-d':
+            if len(arg) != 2:
+                print('invalid arguments')
+                return
+            self.cvs.delete_tag(tag_name)
 
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)

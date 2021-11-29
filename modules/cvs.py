@@ -63,13 +63,13 @@ class CVS:
 
         self.index.staged.add(data)
 
-    def make_commit(self):
+    def make_commit(self, message=''):
         if not self.index.staged:
             return
 
         # make commit from staged files and store it
         commit_tree = Helpers.initialize_and_store_tree_from_collection(self.index.staged, self._full_path_to_objects)
-        new_commit = Commit.derive_commit(self.get_commit_from_head(), commit_tree)
+        new_commit = Commit.derive_commit(self.get_commit_from_head(), commit_tree, message=message)
         CVSStorage.store_object(new_commit.get_hash().hex(), new_commit.serialize(), Commit, self._full_path_to_objects)
 
         # move head and branch to new commit and store them
@@ -125,9 +125,9 @@ class CVS:
         else:
             return Head(commit)
 
-    def create_tag(self, tag_name: str):
+    def create_tag(self, tag_name: str, message=''):
         current_commit = self.get_commit_from_head()
-        tag = Tag(tag_name, current_commit)
+        tag = Tag(tag_name, current_commit, message=message)
         CVSStorage.store_object(tag_name,
                                 tag.get_pointer().hex().encode(),
                                 Tag,

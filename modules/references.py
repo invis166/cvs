@@ -38,9 +38,10 @@ class Head(Reference):
 
 class Tag(Reference):
     '''Tag is a reference to a commit, but it is not moving unlike Branch'''
-    def __init__(self, name: str, commit: Commit):
+    def __init__(self, name: str, commit: Commit, message=''):
         self.name = name
         self.commit = commit
+        self.message = message
 
     def get_pointer(self) -> bytes:
         return self.commit.get_hash()

@@ -44,11 +44,11 @@ class Commit(CVSObject):
     '''Commit is reference to a top-level tree'''
     def __init__(self, tree: "Tree", message=''):
         self.tree = tree
-        self.parent_commit_hash: bytes = b''
+        self.parent_commit_hash = b''
         self.message = message
 
-    def derive_commit(self, tree: "Tree") -> "Commit":
-        commit = Commit(tree)
+    def derive_commit(self, tree: "Tree", message='') -> "Commit":
+        commit = Commit(tree, message)
         commit.parent_commit_hash = self.get_hash()
 
         return commit
