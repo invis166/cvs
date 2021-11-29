@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from modules.cvs_objects import Commit, Tree, Blob, TreeObjectData
 from modules.helpers import Helpers
-from modules.references import Branch, Head, Reference
+from modules.references import Branch, Head, Reference, Tag
 from modules.storage import CVSStorage
 from modules.folders_enum import FoldersEnum
 
@@ -69,7 +69,7 @@ class CVS:
 
         # make commit from staged files and store it
         commit_tree = Helpers.initialize_and_store_tree_from_collection(self.index.staged, self._full_path_to_objects)
-        new_commit = Commit.derive_commit(self._initialize_commit_from_head(), commit_tree)
+        new_commit = Commit.derive_commit(self.get_commit_from_head(), commit_tree)
         CVSStorage.store_object(new_commit.get_hash().hex(), new_commit.serialize(), Commit, self._full_path_to_objects)
 
         # move head and branch to new commit and store them
@@ -103,7 +103,7 @@ class CVS:
         return full_tree
 
     def update_index(self):
-        head_commit = self._initialize_commit_from_head()
+        head_commit = self.get_commit_from_head()
         self.index.update(self.get_full_tree_state(head_commit))
 
     def get_commit_by_hash(self, commit_hash: str) -> Commit:
@@ -124,6 +124,18 @@ class CVS:
             return Head(new_branch)
         else:
             return Head(commit)
+
+    def create_tag(self, tag_name: str):
+        current_commit = self.get_commit_from_head()
+        tag = Tag(tag_name, current_commit)
+        CVSStorage.store_object(tag_name,
+                                tag.get_pointer().hex().encode(),
+                                Tag,
+                                os.path.join(self.path_to_repository, FoldersEnum.TAGS))
+
+    def delete_tag(self, tag_name: str):
+        path_to_tag = os.path.join(self.path_to_repository, FoldersEnum.TAGS, tag_name)
+        os.remove(path_to_tag)
 
     def store_head(self):
         CVSStorage.store_object('HEAD',
@@ -147,7 +159,7 @@ class CVS:
         item = self._get_head_reference()
         self.head = Head(item)
 
-    def _initialize_commit_from_head(self) -> Commit:
+    def get_commit_from_head(self) -> Commit:
         item = self._get_head_reference()
         if isinstance(item, Commit):
             return item

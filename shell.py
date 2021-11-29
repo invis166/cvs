@@ -127,6 +127,17 @@ class CVSShell(cmd.Cmd):
         self.cvs.head = Head(commit)
         self.cvs.store_head()
 
+    def do_tag(self, arg: str):
+        '''Create/Delete tag'''
+        arg = arg.split(' ')
+        if len(arg) != 2:
+            print('invalid arguments')
+            return
+        if arg[0] == '-c':
+            self.cvs.create_tag(arg[1])
+        elif arg[0] == '-d':
+            self.cvs.delete_tag(arg[1])
+
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)
         os.chdir(self.working_directory)
