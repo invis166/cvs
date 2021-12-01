@@ -74,11 +74,11 @@ class CVSShell(cmd.Cmd):
         for new in filter(staged_filter, self.cvs.index.new):
             print(f'new: {new}')
         for removed in filter(staged_filter, self.cvs.index.removed):
-            print(f'removed: {removed}')
+            print(f'removed: {removed.path}')
         for modified in filter(staged_filter, self.cvs.index.modified):
-            print(f'modified: {modified}')
+            print(f'modified: {modified.path}')
         for staged in self.cvs.index.staged:
-            print(f'staged: {staged}')
+            print(f'staged: {staged.path}')
 
     def do_add(self, arg: str):
         '''Add specified file to a commit'''
