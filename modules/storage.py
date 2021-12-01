@@ -34,7 +34,6 @@ class FolderStorage(KVStorage):
             return f.read()
 
 
-# Visitor pattern
 class CVSStorage(FolderStorage):
     @staticmethod
     def store_object(name: str, content: bytes, obj_type: type, destination: str):

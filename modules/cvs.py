@@ -116,7 +116,18 @@ class CVS:
                                             Branch,
                                             os.path.join(self.path_to_repository, FoldersEnum.HEADS))
 
-        return Branch(branch_name, Commit.deserialize(commit_hash))
+        raw_commit = CVSStorage.read_object(commit_hash.decode(), Commit, self._full_path_to_objects)
+
+        return Branch(branch_name, Commit.deserialize(raw_commit))
+
+    def get_commit_by_tag_name(self, tag_name: str) -> Commit:
+        commit_hash = CVSStorage.read_object(tag_name,
+                                             Tag,
+                                             os.path.join(self.path_to_repository, FoldersEnum.TAGS))
+
+        raw_commit = CVSStorage.read_object(commit_hash.decode(), Commit, self._full_path_to_objects)
+
+        return Commit.deserialize(raw_commit)
 
     def move_head_with_branch_to_commit(self, commit: Commit) -> Head:
         if self.head.is_point_to_branch:
@@ -137,11 +148,21 @@ class CVS:
         path_to_tag = os.path.join(self.path_to_repository, FoldersEnum.TAGS, tag_name)
         os.remove(path_to_tag)
 
+    def delete_branch(self, branch_name: str):
+        path_to_branch = os.path.join(self.path_to_repository, FoldersEnum.HEADS, branch_name)
+        os.remove(path_to_branch)
+
     def store_head(self):
-        CVSStorage.store_object('HEAD',
-                                self.head.get_pointer(),
-                                Head,
-                                os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+        if self.head.is_point_to_branch:
+            CVSStorage.store_object('HEAD',
+                                    self.head.get_pointer(),
+                                    Head,
+                                    os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
+        else:
+            CVSStorage.store_object('HEAD',
+                                    self.head.get_pointer().hex().encode(),
+                                    Head,
+                                    os.path.join(self.path_to_repository, FoldersEnum.CVS_DATA))
 
     def store_branch(self, branch: Branch):
         CVSStorage.store_object(branch.name,
@@ -165,6 +186,16 @@ class CVS:
             return item
         else:
             return item.commit
+
+    def get_branches_names(self) -> list[str]:
+        path_to_branches = os.path.join(self.path_to_repository, FoldersEnum.HEADS)
+
+        return os.listdir(path_to_branches)
+
+    def get_tags_names(self) -> list[str]:
+        path_to_tags = os.path.join(self.path_to_repository, FoldersEnum.TAGS)
+
+        return os.listdir(path_to_tags)
 
     def _get_head_reference(self):
         head_reference = CVSStorage.read_object('HEAD',
@@ -229,7 +260,6 @@ class Index:
 
         comp_res = Index.compare_trees(filtered_dir_tree, tree)
         self.new = comp_res.in_first
-        # если объект не найден и он помечен удаленным, то он нам не нужен
         self.removed = {TreeObjectData(data.path, data.object_type, is_removed=True): v
                         for data, v in comp_res.in_second.items()
                         if TreeObjectData(data.path, data.object_type, is_removed=True) not in tree.children}
