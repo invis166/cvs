@@ -72,7 +72,7 @@ class CVSShell(cmd.Cmd):
             print(f'detached head: {self.cvs.head.commit.get_hash().hex()}')
         staged_filter = lambda x: x not in self.cvs.index.staged
         for new in filter(staged_filter, self.cvs.index.new):
-            print(f'new: {new}')
+            print(f'new: {new.path}')
         for removed in filter(staged_filter, self.cvs.index.removed):
             print(f'removed: {removed.path}')
         for modified in filter(staged_filter, self.cvs.index.modified):
