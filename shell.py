@@ -122,6 +122,9 @@ class CVSShell(cmd.Cmd):
 
     def do_checkout(self, arg: str):
         '''Move head to a commit'''
+        if not arg:
+            print('pass the argument')
+            return
         try:
             from_hash = self.cvs.get_commit_by_hash(arg)
         except FileNotFoundError:
