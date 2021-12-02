@@ -51,13 +51,7 @@ class CVSShell(cmd.Cmd):
             self.cvs.make_commit(commit_message)
         else:
             commit = self.cvs.get_commit_by_hash(values['i'])
-            print(f'commit message: {commit.message}')
-            print('changed files:')
-            for data in commit.tree.children:
-                if data.is_removed:
-                    print(f'removed: {data.path}')
-                else:
-                    print(data.path)
+            self._print_commit_info(commit)
 
     def do_status(self, arg: str):
         '''Show an index'''
@@ -159,6 +153,7 @@ class CVSShell(cmd.Cmd):
             self.cvs.delete_tag(tag_name)
 
     def do_branch(self, arg):
+        '''Create/Delete/List branch'''
         arg = arg.split(' ')
         try:
             values = vars(self._create_and_delete_parser.parse_args(arg))
@@ -174,6 +169,18 @@ class CVSShell(cmd.Cmd):
             self.cvs.store_branch(branch)
         else:
             self.cvs.delete_branch(branch_name)
+
+    def do_log(self, arg):
+        commit = self.cvs.get_commit_from_head()
+        self._print_commit_info(commit)
+        print('-' * 20)
+        while commit.parent_commit_hash != b'':
+            prev_commit = self.cvs.get_commit_by_hash(commit.parent_commit_hash.hex())
+            if prev_commit.parent_commit_hash == b'':
+                break;
+            self._print_commit_info(prev_commit)
+            print('-' * 20)
+            commit = prev_commit
 
     def do_ls(self, arg: str):
         '''Show all files in specified directory'''
@@ -199,6 +206,8 @@ class CVSShell(cmd.Cmd):
             self.cvs = None
             self.path_to_repository = None
 
+
+
     def do_mkdir(self, arg: str):
         '''Create new directory'''
         try:
@@ -221,6 +230,15 @@ class CVSShell(cmd.Cmd):
         self.working_directory = os.path.abspath(directory)
         os.chdir(self.working_directory)
         CVSShell.prompt = f'{self.working_directory}$ '
+
+    def _print_commit_info(self, commit):
+        print(f'commit message: {commit.message}')
+        print('changed files:')
+        for data in commit.tree.children:
+            if data.is_removed:
+                print(f'removed: {data.path}')
+            else:
+                print(data.path)
 
 
 if __name__ == '__main__':
