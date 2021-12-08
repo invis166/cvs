@@ -177,7 +177,7 @@ class CVSShell(cmd.Cmd):
         while commit.parent_commit_hash != b'':
             prev_commit = self.cvs.get_commit_by_hash(commit.parent_commit_hash.hex())
             if prev_commit.parent_commit_hash == b'':
-                break;
+                break
             self._print_commit_info(prev_commit)
             print('-' * 20)
             commit = prev_commit
