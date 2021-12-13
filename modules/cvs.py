@@ -17,6 +17,7 @@ class CVS:
         self.path_to_repository = path
         self.ignore: set[TreeObjectData] = {TreeObjectData(os.path.join(path, FoldersEnum.CVS_DATA), Tree)}
         self.index.ignore = self.ignore
+        self.is_rebasing = False
 
         self._full_path_to_objects = os.path.join(path, FoldersEnum.OBJECTS)
         self._full_path_to_references = os.path.join(path, FoldersEnum.REFS)
@@ -84,10 +85,8 @@ class CVS:
         full_tree = Tree()
         full_tree.children = commit.tree.children.copy()
         removed = set(filter(lambda x: x.is_removed, commit.tree.children))
-        current_commit = commit
-        while current_commit.parent_commit_hash != b'':
-            prev_commit = Commit.deserialize(CVSStorage.read_object(current_commit.parent_commit_hash.hex(), Commit, self._full_path_to_objects))
-            for item in prev_commit.tree.children:
+        for parent in self.enumerate_commit_parents(commit):
+            for item in parent.tree.children:
                 item_with_is_removed = TreeObjectData(item.path, item.object_type, is_removed=True)
                 item_without_is_removed = TreeObjectData(item.path, item.object_type, is_removed=False)
                 if item_with_is_removed in removed:
@@ -97,14 +96,24 @@ class CVS:
 
                 if item.is_removed:
                     removed.add(item)
-                full_tree.children[item] = prev_commit.tree.children[item]
-            current_commit = prev_commit
+                full_tree.children[item] = parent.tree.children[item]
 
         return full_tree
 
     def update_index(self):
         head_commit = self.get_commit_from_head()
         self.index.update(self.get_full_tree_state(head_commit))
+
+    def rebase(self, branch: Branch):
+        head_commit = self.get_commit_from_head()
+        head_commit_parents = {parent for parent in self.enumerate_commit_parents(head_commit)}
+        common_commit = None
+        for branch_parent in self.enumerate_commit_parents(branch.commit):
+            if branch_parent in head_commit_parents:
+                common_commit = branch_parent
+                break
+
+        pass
 
     def get_commit_by_hash(self, commit_hash: str) -> Commit:
         raw_commit = CVSStorage.read_object(commit_hash, Commit, self._full_path_to_objects)
@@ -196,6 +205,15 @@ class CVS:
         path_to_tags = os.path.join(self.path_to_repository, FoldersEnum.TAGS)
 
         return os.listdir(path_to_tags)
+
+    def enumerate_commit_parents(self, commit: Commit):
+        current_commit = commit
+        while current_commit.parent_commit_hash != b'':
+            prev_commit = self.get_commit_by_hash(commit.parent_commit_hash.hex())
+            if prev_commit.parent_commit_hash == b'':
+                break
+            yield prev_commit
+            current_commit = prev_commit
 
     def _get_head_reference(self):
         head_reference = CVSStorage.read_object('HEAD',

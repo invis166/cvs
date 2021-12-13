@@ -174,13 +174,9 @@ class CVSShell(cmd.Cmd):
         commit = self.cvs.get_commit_from_head()
         self._print_commit_info(commit)
         print('-' * 20)
-        while commit.parent_commit_hash != b'':
-            prev_commit = self.cvs.get_commit_by_hash(commit.parent_commit_hash.hex())
-            if prev_commit.parent_commit_hash == b'':
-                break
-            self._print_commit_info(prev_commit)
+        for parent in self.cvs.enumerate_commit_parents(commit):
+            self._print_commit_info(parent)
             print('-' * 20)
-            commit = prev_commit
 
     def do_ls(self, arg: str):
         '''Show all files in specified directory'''
