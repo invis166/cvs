@@ -2,7 +2,7 @@ import pytest
 import os
 
 from modules.cvs_objects import Blob, Tree, Commit, TreeObjectData
-from modules.helpers import Helpers
+from modules.utils import *
 
 
 @pytest.fixture()
@@ -49,4 +49,4 @@ def test_initialize_and_store_from_directory_restore_properly(tmpdir):
         f.write(b'fourth_content')
 
     os.mkdir(os.path.join(tmpdir, '../strg'))
-    tree = Helpers.initialize_and_store_tree_from_directory(tmpdir, os.path.join(tmpdir, '../strg'))
+    tree = initialize_and_store_tree_from_directory(tmpdir, os.path.join(tmpdir, '../strg'))
