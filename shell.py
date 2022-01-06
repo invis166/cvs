@@ -2,11 +2,10 @@ import argparse
 import cmd
 import os
 
-from modules.folders_enum import FoldersEnum
 from modules.cvs import CVS
-from modules.helpers import Helpers
 from modules.cvs_objects import Tree, TreeObjectData, Blob
 from modules.references import Head, Branch
+from modules.rebase_state import RebaseState
 
 
 class CVSShell(cmd.Cmd):
@@ -15,13 +14,15 @@ class CVSShell(cmd.Cmd):
 
     def __init__(self):
         super(CVSShell, self).__init__()
-        self.cvs = None
+        self.cvs: CVS = None
         self.path_to_repository = None
         self.working_directory = os.getcwd()
         self.do_cd(self.working_directory)
 
         self._create_and_delete_parser = None
         self._commit_parser = None
+        self._rebase_parser = None
+        self._reset_parser = None
         self._initialize_argparsers()
 
     def do_init(self, arg: str):
@@ -90,11 +91,18 @@ class CVSShell(cmd.Cmd):
             self.cvs.add_to_staged(data)
 
     def do_reset(self, arg):
-        '''Move head and current branch to specified commit'''
+        '''Move head and current branch to specified commit
+        reset [--hard] commit'''
+        arg = arg.split()
+        if len(arg) == 1:
+            commit_hash = arg[0]
+        else:
+            commit_hash = arg[1]
+
         try:
-            commit = self.cvs.get_commit_by_hash(arg)
+            commit = self.cvs.get_commit_by_hash(commit_hash)
         except FileNotFoundError:
-            print(f'can not find commit with hash {arg}')
+            print(f'can not find commit with hash {commit_hash}')
             return
 
         head = self.cvs.move_head_with_branch_to_commit(commit)
@@ -102,6 +110,8 @@ class CVSShell(cmd.Cmd):
         self.cvs.store_head()
         if self.cvs.head.is_point_to_branch:
             self.cvs.store_branch(self.cvs.head.branch)
+        if len(arg) == 2 and arg[0] == '--hard':
+            self.cvs.restore_repository_state(commit)
 
     def do_switch(self, arg: str):
         '''Move head to a branch'''
@@ -170,7 +180,38 @@ class CVSShell(cmd.Cmd):
         else:
             self.cvs.delete_branch(branch_name)
 
+    def do_rebase(self, arg):
+        '''Rebase branches
+        rebase [-i|--interactive] branch_name
+        rebase [-o|--onto] first_branch second_branch target_branch
+        rebase [-a|--abort]
+        '''
+        if len(arg) == 1:
+            branch = self.cvs.get_branch_by_name(arg[0])
+            res = self.cvs.rebase(branch)
+            if res.is_conflict:
+                print(f'can not finish rebase, please resolve conflict in {res.current_file.path}')
+            else:
+                print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
+                for commit in res.applied:
+                    self._print_commit_info(commit, verbose=False)
+        else:
+            values = vars(self._rebase_parser.parse_args(arg.split(' ')))
+            if values['continue']:
+                res = self.cvs.continue_rebase()
+                if res.is_conflict:
+                    print(f'can not finish rebase, please resolve conflict in {res.current_file.path}')
+                else:
+                    print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
+                    for commit in res.applied:
+                        self._print_commit_info(commit, verbose=False)
+            elif values['onto']:
+                print('not implemented')
+            elif values['abort']:
+                self.cvs.abort_rebase()
+
     def do_log(self, arg):
+        '''Show all commits up to the first'''
         commit = self.cvs.get_commit_from_head()
         self._print_commit_info(commit)
         print('-' * 20)
@@ -202,8 +243,6 @@ class CVSShell(cmd.Cmd):
             self.cvs = None
             self.path_to_repository = None
 
-
-
     def do_mkdir(self, arg: str):
         '''Create new directory'''
         try:
@@ -214,21 +253,28 @@ class CVSShell(cmd.Cmd):
     def _initialize_argparsers(self):
         self._create_and_delete_parser = argparse.ArgumentParser()
         group = self._create_and_delete_parser.add_mutually_exclusive_group()
-        group.add_argument('-c', type=str)
-        group.add_argument('-d', type=str)
-        group.add_argument('-l', action='store_true')
+        group.add_argument('-c', type=str, help='create')
+        group.add_argument('-d', type=str, help='delete')
+        group.add_argument('-l', action='store_true', help='list')
 
         self._commit_parser = argparse.ArgumentParser()
-        self._commit_parser.add_argument('-m', nargs='*')
-        self._commit_parser.add_argument('-i')
+        self._commit_parser.add_argument('-m', nargs='*', help='commit message')
+        self._commit_parser.add_argument('-i', help='get commit info')
+
+        self._rebase_parser = argparse.ArgumentParser()
+        self._rebase_parser.add_argument('-i', '--interactive', help='interactive mode')
+        self._rebase_parser.add_argument('-o', '--onto', nargs=3)
+        self._rebase_parser.add_argument('-a', '--abort', action='store_true', help='abort rebase')
 
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)
         os.chdir(self.working_directory)
         CVSShell.prompt = f'{self.working_directory}$ '
 
-    def _print_commit_info(self, commit):
-        print(f'commit message: {commit.message}')
+    def _print_commit_info(self, commit, verbose=True):
+        print(f'{commit.get_hash().hex()} | {commit.message}')
+        if not verbose:
+            return
         print('changed files:')
         for data in commit.tree.children:
             if data.is_removed:
