@@ -3,6 +3,7 @@ import os
 
 from modules.folders_enum import FoldersEnum
 from modules.cvs import CVS
+from modules.cvs_objects import Commit, TreeObjectData, Tree, Blob
 from modules.references import Tag
 
 
