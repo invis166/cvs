@@ -12,6 +12,7 @@ def initialize_and_store_tree_from_directory(directory: str, destination: str) -
     for file in os.listdir(directory):
         full_path = os.path.join(directory, file)
         if os.path.isdir(full_path):
+            full_path = os.path.join(full_path, '')
             file_data = TreeObjectData(full_path, Tree)
             obj = initialize_and_store_tree_from_directory(full_path, destination)
         else:
@@ -22,7 +23,7 @@ def initialize_and_store_tree_from_directory(directory: str, destination: str) -
         tree.add_object(file_data, obj.get_hash())
         CVSStorage.store_object(obj.get_hash().hex(), obj.serialize(), file_data.object_type, destination)
 
-    return tree
+    return tree # слеши
 
 
 def initialize_and_store_tree_from_collection(collection, destination: str) -> Tree:

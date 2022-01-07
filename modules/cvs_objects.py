@@ -87,12 +87,14 @@ class Tree(CVSObject):
         sha1_bytes = 20
         counter = 0
         total_bytes = bytearray(sha1_bytes * len(self.children))
+        data_hash = abs(sum(map(hash, self.children.keys()))).to_bytes(64, 'big')
         for object_hash in itertools.chain(self.children.values()):
             for j in object_hash:
                 total_bytes[counter] = j
                 counter += 1
 
-        return hashlib.sha1(header + total_bytes).digest()
+        return hashlib.sha1(header + total_bytes + data_hash).digest()
+
 
     @staticmethod
     def initialize_from_directory(directory: str) -> "Tree":
