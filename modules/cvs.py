@@ -336,9 +336,9 @@ class Index:
         in_first: dict[TreeObjectData, bytes] = {}
         in_second: dict[TreeObjectData, bytes] = {}
         different: dict[TreeObjectData, bytes] = {}
-        res = TreeComparisonResult(in_first, in_second, different)
-
         equal: dict[TreeObjectData, bytes] = {}
+        res = TreeComparisonResult(in_first, in_second, different, equal)
+
         second_tree_objects_data = second.children.keys()
         for first_tree_object_data in first.children:
             if first_tree_object_data not in second_tree_objects_data:
@@ -352,19 +352,19 @@ class Index:
                         second.children[first_tree_object_data].hex(),
                         Tree,
                         storage_path))
+                    for item in second.children:
+                        if item in second_subtree.children:
+                            second_subtree.children[item] = second.children[item]
                     comp_res = Index.compare_trees(first_subtree, second_subtree, storage_path)
                     res.extend(comp_res)
                 elif first_tree_object_data.object_type == Blob:
                     different[first_tree_object_data] = first.children[first_tree_object_data]
-                else:
-                    equal[first_tree_object_data] = first.children[first_tree_object_data]
+            else:
+                equal[first_tree_object_data] = first.children[first_tree_object_data]
 
-        # треилинг слешы ебаные
         for item in second.children:
-            if item not in first.children:
+            if item not in equal and item not in first.children:
                 in_second[item] = second.children[item]
-        # in_second.update(map(lambda data: (data, second.children[data]),
-        #                     filter(lambda data: data not in first.children, second.children)))
 
         return res
 
@@ -386,8 +386,10 @@ class TreeComparisonResult:
     in_first: dict["TreeObjectData", bytes]
     in_second: dict["TreeObjectData", bytes]
     different: dict["TreeObjectData", bytes]
+    equal: dict["TreeObjectData", bytes]
 
     def extend(self, other: "TreeComparisonResult"):
         self.in_first.update(other.in_first)
         self.in_second.update(other.in_second)
         self.different.update(other.different)
+        self.equal.update(other.equal)
