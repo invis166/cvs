@@ -1,5 +1,4 @@
 import abc
-import itertools
 import os
 from dataclasses import dataclass
 import hashlib
@@ -65,6 +64,14 @@ class Commit(CVSObject):
 
         return hashlib.sha1(header + self.tree.get_hash() + self.parent_commit_hash).digest()
 
+    def __hash__(self):
+        return int.from_bytes(self.get_hash(), byteorder='big', signed=True)
+
+    def __eq__(self, other):
+        return self.tree == other.tree \
+               and self.message == other.message \
+               and self.parent_commit_hash == other.parent_commit_hash
+
 
 class Tree(CVSObject):
     '''Tree is a collection of blobs and trees'''
@@ -85,7 +92,6 @@ class Tree(CVSObject):
     def get_hash(self) -> bytes:
         return hashlib.sha1(self.serialize()).digest()
 
-
     @staticmethod
     def initialize_from_directory(directory: str) -> "Tree":
         '''Return a Tree object representing a directory'''
@@ -105,8 +111,11 @@ class Tree(CVSObject):
 
         return tree
 
+    def __eq__(self, other):
+        return self.children == other.children and self.is_removed == other.is_removed
 
-@dataclass(frozen=True)
+
+@dataclass(eq=True, frozen=True)
 class TreeObjectData:
     path: str
     object_type: type

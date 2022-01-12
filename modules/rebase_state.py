@@ -10,6 +10,6 @@ class RebaseState:
         self.current_file: TreeObjectData = None
         self.applied: set[Commit] = set()
         self.not_applied: list[Commit] = []
-        self.dst_branch_changed: set[Commit] = set()
+        self.destination_branch_changed: set[TreeObjectData] = set()
         self.resolved_files: set[TreeObjectData] = set()
         self.is_conflict = False

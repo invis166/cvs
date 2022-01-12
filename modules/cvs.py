@@ -11,7 +11,7 @@ from modules.rebase_state import RebaseState
 
 class CVS:
     def __init__(self, path: str):
-        self.index: Index = Index(path)
+        self.index: Index = Index(path, self)
         self.head: Head = None
         self.branches: list[Branch] = []
         self.path_to_repository = path
@@ -81,6 +81,33 @@ class CVS:
 
         self.index.staged = set()
 
+    def expand_full_tree(self, commit: Commit) -> dict[TreeObjectData, bytes]:
+        files = {}
+        removed = set(filter(lambda x: x.is_removed, commit.tree.children))
+        for parent in self.enumerate_commit_parents(commit, return_itself=True):
+            for item, item_hash in parent.tree.children.items():
+                blobs = []
+                if item.object_type is Tree:
+                    tree = Tree.deserialize(CVSStorage.read_object(item_hash.hex(), Tree, self._full_path_to_objects))
+                    for pair in self.enumerate_tree_files(tree):
+                        blobs.append(pair)
+                else:
+                    blobs.append((item, item_hash))
+
+                for blob, blob_hash in blobs:
+                    item_with_is_removed = TreeObjectData(blob.path, blob.object_type, is_removed=True)
+                    item_without_is_removed = TreeObjectData(blob.path, blob.object_type, is_removed=False)
+                    if item_with_is_removed in removed:
+                        continue
+                    elif item_without_is_removed in files:
+                        continue
+
+                    if blob.is_removed:
+                        removed.add(blob)
+                    files[blob] = blob_hash
+
+        return files
+
     def get_full_tree_state(self, commit: Commit) -> Tree:
         full_tree = Tree()
         full_tree.children = commit.tree.children.copy()
@@ -102,7 +129,7 @@ class CVS:
 
     def update_index(self):
         head_commit = self.get_commit_from_head()
-        self.index.update(self.get_full_tree_state(head_commit), self._full_path_to_objects)
+        self.index.update(head_commit)
 
     def rebase(self, branch: Branch) -> RebaseState:
         head_branch = self.get_branch_from_head()
@@ -111,14 +138,16 @@ class CVS:
         self.rebase_state = RebaseState(branch, head_branch)
 
         common_commit = None
-        for branch_parent in self.enumerate_commit_parents(branch.commit):
+        for branch_parent in self.enumerate_commit_parents(branch.commit, return_itself=True):
             if branch_parent in head_commit_parents:
                 common_commit = branch_parent
                 break
             self.rebase_state.not_applied.append(branch_parent)
+        self.rebase_state.not_applied = self.rebase_state.not_applied[::-1]
 
-        for head_parent in self.enumerate_commit_parents(head_commit):
-            self.rebase_state.dst_branch_changed.add(head_parent)
+        for head_parent in self.enumerate_commit_parents(head_commit, return_itself=True):
+            for item in head_parent.tree.children:
+                self.rebase_state.destination_branch_changed.add(item)
             if head_parent == common_commit:
                 break
 
@@ -131,7 +160,12 @@ class CVS:
             raise ValueError('not in rebase')
         self.rebase_state.is_conflict = False
 
-        return self._rebase()
+        state = self._rebase()
+        self.make_commit('resolve rebase conflict')
+        if state.is_conflict:
+            state.current_dst_commit = self.head.branch.commit
+
+        return state
 
     def abort_rebase(self):
         if not self.rebase_state:
@@ -150,15 +184,13 @@ class CVS:
                     continue
                 self.rebase_state.current_file = item
                 self.rebase_state.resolved_files.add(item)
-                if item in self.rebase_state.dst_branch_changed:
+                if item in self.rebase_state.destination_branch_changed:
                     self.rebase_state.is_conflict = True
                     # нужно составить файл с конфликтом
-                    other_branch_file_lines = CVSStorage \
-                        .read_object(item_hash.decode(), Blob, self._full_path_to_objects) \
-                        .decode() \
-                        .split()
+                    branch_blob = Blob.deserialize(CVSStorage.read_object(item_hash.hex(), Blob, self._full_path_to_objects))
+                    other_branch_file_lines = branch_blob.content.decode().splitlines(keepends=True)
                     with open(item.path, 'r') as f:
-                        curr_branch_file_lines = f.readlines()
+                        curr_branch_file_lines = f.read().splitlines(keepends=True)
                     create_diff_file(item.path, curr_branch_file_lines, other_branch_file_lines)
                     # ждем разрешения конфликта
                     return self.rebase_state
@@ -170,7 +202,9 @@ class CVS:
             CVSStorage.store_object(
                 not_applied_commit.get_hash().hex(), not_applied_commit.serialize(), Blob, self._full_path_to_objects)
             # сдвинуть head и текущую ветку
-            self.move_head_with_branch_to_commit(not_applied_commit)
+            self.head = self.move_head_with_branch_to_commit(not_applied_commit)
+            self.store_head()
+            self.store_branch(self.head.branch)
             self.rebase_state.current_dst_commit = not_applied_commit
 
         state = self.rebase_state
@@ -179,26 +213,22 @@ class CVS:
         return state
 
     def restore_repository_state(self, commit: Commit):
-        full_tree = self.get_full_tree_state(commit)
+        tree_files = self.expand_full_tree(commit)
 
         # удалить все что есть (кроме того, что в игноре)
         ignore = set(i.path for i in self.index.ignore)
         rmdir(self.path_to_repository, ignore)
 
         # восстановить копии из хранилища
-        self._restore_tree(full_tree)
+        self._restore_tree(tree_files)
 
-    def _restore_tree(self, tree: Tree):
-        for file, file_hash in tree.children.items():
+    def _restore_tree(self, files: dict[TreeObjectData, bytes]):
+        for file, file_hash in files.items():
             file_data = CVSStorage.read_object(file_hash.hex(), file.object_type, self._full_path_to_objects)
-            if file.object_type is Tree:
-                nested_tree = Tree.deserialize(file_data)
-                self._restore_tree(nested_tree)
-            else:
-                os.makedirs(os.path.dirname(file.path), exist_ok=True)
-                blob = Blob.deserialize(file_data)
-                with open(file.path, 'wb+') as f:
-                    f.write(blob.content)
+            os.makedirs(os.path.dirname(file.path), exist_ok=True)
+            blob = Blob.deserialize(file_data)
+            with open(file.path, 'wb+') as f:
+                f.write(blob.content)
 
     def get_commit_by_hash(self, commit_hash: str) -> Commit:
         raw_commit = CVSStorage.read_object(commit_hash, Commit, self._full_path_to_objects)
@@ -298,14 +328,24 @@ class CVS:
 
         return os.listdir(path_to_tags)
 
-    def enumerate_commit_parents(self, commit: Commit):
+    def enumerate_commit_parents(self, commit: Commit, return_itself=False):
         current_commit = commit
+        if return_itself:
+            yield commit
         while current_commit.parent_commit_hash != b'':
             prev_commit = self.get_commit_by_hash(current_commit.parent_commit_hash.hex())
             if prev_commit.parent_commit_hash == b'':
                 break
             yield prev_commit
             current_commit = prev_commit
+
+    def enumerate_tree_files(self, tree: Tree) -> tuple[TreeObjectData, bytes]:
+        for item, item_hash in tree.children.items():
+            if item.object_type is Tree:
+                nested_tree = CVSStorage.read_object(item_hash.hex(), Tree, self._full_path_to_objects)
+                yield from self.enumerate_tree_files(Tree.deserialize(nested_tree))
+            else:
+                yield item, item_hash
 
     def _get_head_reference(self):
         head_reference = CVSStorage.read_object('HEAD',
@@ -323,62 +363,64 @@ class CVS:
 
 
 class Index:
-    def __init__(self, directory: str):
+    def __init__(self, directory: str, cvs: CVS):
         self.directory = directory
+        self.cvs = cvs
         self.ignore: set[TreeObjectData] = set()
         self.staged: set[TreeObjectData] = set()
         self.modified: dict[TreeObjectData, bytes] = {}
         self.removed: dict[TreeObjectData, bytes] = {}
         self.new: dict[TreeObjectData, bytes] = {}
 
-    @staticmethod
-    def compare_trees(first: Tree, second: Tree, storage_path: str) -> "TreeComparisonResult":
+    def compare_tree_to_dir(self, tree_files: dict[TreeObjectData, bytes]) -> "TreeComparisonResult":
         in_first: dict[TreeObjectData, bytes] = {}
         in_second: dict[TreeObjectData, bytes] = {}
         different: dict[TreeObjectData, bytes] = {}
         equal: dict[TreeObjectData, bytes] = {}
         res = TreeComparisonResult(in_first, in_second, different, equal)
 
-        second_tree_objects_data = second.children.keys()
-        for first_tree_object_data in first.children:
-            if first_tree_object_data not in second_tree_objects_data:
+        dir_tree_files = {item: item_hash for item, item_hash in self._enumerate_tree_files_from_directory(self.directory)}
+        for first_tree_object_data in dir_tree_files:
+            if first_tree_object_data not in tree_files:
                 # current object is new
-                in_first[first_tree_object_data] = first.children[first_tree_object_data]
-            elif first.children[first_tree_object_data] != second.children[first_tree_object_data]:
+                in_first[first_tree_object_data] = dir_tree_files[first_tree_object_data]
+            elif dir_tree_files[first_tree_object_data] != tree_files[first_tree_object_data]:
                 # current object was changed
-                if first_tree_object_data.object_type == Tree:
-                    first_subtree = Tree.initialize_from_directory(first_tree_object_data.path)
-                    second_subtree = Tree.deserialize(CVSStorage.read_object(
-                        second.children[first_tree_object_data].hex(),
-                        Tree,
-                        storage_path))
-                    for item in second.children:
-                        if item in second_subtree.children:
-                            second_subtree.children[item] = second.children[item]
-                    comp_res = Index.compare_trees(first_subtree, second_subtree, storage_path)
-                    res.extend(comp_res)
-                elif first_tree_object_data.object_type == Blob:
-                    different[first_tree_object_data] = first.children[first_tree_object_data]
+                different[first_tree_object_data] = dir_tree_files[first_tree_object_data]
             else:
-                equal[first_tree_object_data] = first.children[first_tree_object_data]
+                equal[first_tree_object_data] = dir_tree_files[first_tree_object_data]
 
-        for item in second.children:
-            if item not in equal and item not in first.children:
-                in_second[item] = second.children[item]
+        for item in tree_files:
+            if item not in equal and item not in different:
+                in_second[item] = tree_files[item]
 
         return res
 
-    def update(self, tree: Tree, storage_path: str):
-        dir_tree = Tree.initialize_from_directory(self.directory)
-        filtered_dir_tree = Tree()
-        filtered_dir_tree.children = {k: v for k, v in dir_tree.children.items() if k not in self.ignore}
-
-        comp_res = Index.compare_trees(filtered_dir_tree, tree, storage_path)
+    def update(self, commit: Commit):
+        tree_files = self.cvs.expand_full_tree(commit)
+        comp_res = self.compare_tree_to_dir(tree_files)
         self.new = comp_res.in_first
         self.removed = {TreeObjectData(data.path, data.object_type, is_removed=True): v
                         for data, v in comp_res.in_second.items()
-                        if TreeObjectData(data.path, data.object_type, is_removed=True) not in tree.children}
+                        if TreeObjectData(data.path, data.object_type, is_removed=True) not in tree_files}
         self.modified = comp_res.different
+
+    def _enumerate_tree_files_from_directory(self, directory: str) -> tuple[TreeObjectData, bytes]:
+        for file in os.listdir(directory):
+            full_path = os.path.join(directory, file)
+            if os.path.isdir(full_path):
+                full_path = os.path.join(full_path, '')
+                if TreeObjectData(full_path, Tree) in self.ignore:
+                    continue
+                yield from self._enumerate_tree_files_from_directory(full_path)
+            else:
+                if TreeObjectData(full_path, Blob) in self.ignore:
+                    continue
+                file_data = TreeObjectData(full_path, Blob)
+                with open(full_path, 'rb') as f:
+                    obj = Blob(f.read())
+
+                yield file_data, obj.get_hash()
 
 
 @dataclass
