@@ -2,9 +2,9 @@ name: Run tests and show coverage
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   build:
@@ -12,10 +12,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.8
+    - name: Set up Python 3.9
       uses: actions/setup-python@v2
       with:
-        python-version: "3.8"
+        python-version: "3.9"
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -28,15 +28,6 @@ jobs:
     - name: Test with pytest
       run: |
         python3 -m pytest tests/
-    - name: Check coverage with upload
-      run: |
-        python3 -m pytest tests/ --cov=src --cov-report html:cov_html
     - name: Check coverage
       run: |
-        python3 -m pytest tests/ --cov=src
-    - name: Upload pytest-cov test results
-      uses: actions/upload-artifact@v2
-      with:
-        name: pytest-cov-results
-        path: cov_html
-      if: ${{ always() }}
+        python3 -m pytest tests/ --cov=modules/
