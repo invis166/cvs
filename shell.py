@@ -8,6 +8,22 @@ from modules.references import Head, Branch
 from modules.rebase_state import RebaseState
 
 
+class ExitCmdExecution(Exception):
+    pass
+
+
+def print_commit_info(commit, verbose=True):
+    print(f'{commit.get_hash().hex()} | {commit.message}')
+    if not verbose:
+        return
+    print('changed files:')
+    for data in commit.tree.children:
+        if data.is_removed:
+            print(f'removed: {data.path}')
+        else:
+            print(data.path)
+
+
 class CVSShell(cmd.Cmd):
     intro = 'test'
     prompt = None
@@ -52,7 +68,7 @@ class CVSShell(cmd.Cmd):
             self.cvs.make_commit(commit_message)
         else:
             commit = self.cvs.get_commit_by_hash(values['i'])
-            self._print_commit_info(commit)
+            print_commit_info(commit)
 
     def do_status(self, arg: str):
         '''Show an index'''
@@ -189,9 +205,10 @@ class CVSShell(cmd.Cmd):
         rebase [-a|--abort]
         '''
         arg = arg.split()
-        if len(arg) == 1 and arg[0] not in ('-c', '--continue'):
+        if len(arg) == 1 and not arg[0][0] == '-':
             branch = self.cvs.get_branch_by_name(arg[0])
-            res = self.cvs.rebase(branch)
+            self.cvs.initialize_rebase_state(branch)
+            res = self.cvs.rebase()
             if res.is_conflict:
                 print(f'can not finish rebase, please resolve conflict in {res.current_file.path}'
                       f' and continue rebase, or abort it. To apply changes, add files to staged')
@@ -199,7 +216,7 @@ class CVSShell(cmd.Cmd):
                 print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
                 self.cvs.restore_repository_state(self.cvs.head.branch.commit)
                 for commit in res.applied:
-                    self._print_commit_info(commit, verbose=False)
+                    print_commit_info(commit, verbose=False)
         else:
             values = vars(self._rebase_parser.parse_args(arg))
             if values['continue']:
@@ -210,19 +227,21 @@ class CVSShell(cmd.Cmd):
                     print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
                     self.cvs.restore_repository_state(self.cvs.head.branch.commit)
                     for commit in res.applied:
-                        self._print_commit_info(commit, verbose=False)
+                        print_commit_info(commit, verbose=False)
             elif values['onto']:
                 print('not implemented')
+            elif values['interactive']:
+                self._handle_interactive_rebase(values['interactive'])
             elif values['abort']:
                 self.cvs.abort_rebase()
 
     def do_log(self, arg):
         '''Show all commits up to the first'''
         commit = self.cvs.get_commit_from_head()
-        self._print_commit_info(commit)
+        print_commit_info(commit)
         print('-' * 20)
         for parent in self.cvs.enumerate_commit_parents(commit):
-            self._print_commit_info(parent)
+            print_commit_info(parent)
             print('-' * 20)
 
     def do_ls(self, arg: str):
@@ -256,6 +275,13 @@ class CVSShell(cmd.Cmd):
         except FileExistsError:
             print(f'directory {os.path.realpath(arg)} already exists')
 
+    def _handle_interactive_rebase(self, branch_name: str):
+        try:
+            InteractiveRebaseShell(self.cvs, branch_name).cmdloop()
+        except ExitCmdExecution:
+            self.cvs.rebase_state = None
+            self.cvs.restore_repository_state(self.cvs.head.branch.commit)
+
     def _initialize_argparsers(self):
         self._create_and_delete_parser = argparse.ArgumentParser()
         group = self._create_and_delete_parser.add_mutually_exclusive_group()
@@ -278,16 +304,77 @@ class CVSShell(cmd.Cmd):
         os.chdir(self.working_directory)
         CVSShell.prompt = f'{self.working_directory}$ '
 
-    def _print_commit_info(self, commit, verbose=True):
-        print(f'{commit.get_hash().hex()} | {commit.message}')
-        if not verbose:
-            return
-        print('changed files:')
-        for data in commit.tree.children:
-            if data.is_removed:
-                print(f'removed: {data.path}')
-            else:
-                print(data.path)
+
+class InteractiveRebaseShell(cmd.Cmd):
+    prompt = '(interactive rebase) > '
+
+    def __init__(self, cvs: CVS, branch_name: str):
+        super().__init__()
+        self.cvs = cvs
+        self.cvs.initialize_rebase_state(self.cvs.get_branch_by_name(branch_name))
+        self.not_applied_commits = self.cvs.rebase_state.not_applied
+        self._show_info()
+
+    def do_pick(self, arg):
+        '''pick <commit> = use commit'''
+        commit = self.cvs.get_commit_by_hash(arg)
+        self.cvs.apply_commit(commit)
+        if self.cvs.rebase_state.is_conflict:
+            print(f'resolve conflict in {self.cvs.rebase_state.current_file.path} and type "apply"')
+        for c in self.not_applied_commits:
+            if c.get_hash().hex() == arg:
+                self.not_applied_commits.remove(c)
+        self._show_info()
+
+    def do_reword(self, arg):
+        '''reword <commit> <msg> = use commit, but edit the commit message'''
+        arg = arg.split()
+        commit_hash = arg[0]
+        msg = ' '.join(arg[1:])
+        commit = self.cvs.get_commit_by_hash(commit_hash)
+        commit.message = msg
+        self.cvs.apply_commit(commit)
+        if self.cvs.rebase_state.is_conflict:
+            print(f'resolve conflict in {self.cvs.rebase_state.current_file}')
+        for c in self.not_applied_commits:
+            if c.get_hash().hex() == commit_hash:
+                self.not_applied_commits.remove(c)
+        self._show_info()
+
+    def do_edit(self, arg):
+        '''edit <commit> = use commit, but stop for amending. type "apply" after finishing'''
+        commit = self.cvs.get_commit_by_hash(arg)
+        self.cvs.restore_repository_state(commit)
+        self.not_applied_commits.remove(commit)
+        self._show_info()
+
+    def do_drop(self, arg):
+        '''drop <commit> = remove commit'''
+        commit = self.cvs.get_commit_by_hash(arg)
+        self.not_applied_commits.remove(commit)
+        self._show_info()
+
+    def do_break(self, arg):
+        '''break = stop merge'''
+        raise ExitCmdExecution()
+
+    def do_abort(self, arg):
+        self.cvs.abort_rebase()
+        raise ExitCmdExecution()
+
+    def do_apply(self, arg):
+        '''apply <message> = do after finishing editing or to resolve conflict'''
+        self.cvs.update_index()
+        self.cvs.index.staged = self.cvs.index.modified.copy()
+        self.cvs.make_commit(arg)
+        self._show_info()
+
+    def _show_info(self):
+        if not self.not_applied_commits:
+            raise ExitCmdExecution()
+        for commit in self.not_applied_commits:
+            print(f'{commit.get_hash().hex()} | {commit.message}')
+        print('type "help" to see available commands')
 
 
 if __name__ == '__main__':

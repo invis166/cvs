@@ -131,7 +131,7 @@ class CVS:
         head_commit = self.get_commit_from_head()
         self.index.update(head_commit)
 
-    def rebase(self, branch: Branch) -> RebaseState:
+    def initialize_rebase_state(self, branch: Branch) -> RebaseState:
         head_branch = self.get_branch_from_head()
         head_commit = head_branch.commit
         head_commit_parents = {parent for parent in self.enumerate_commit_parents(head_commit)}
@@ -143,7 +143,6 @@ class CVS:
                 common_commit = branch_parent
                 break
             self.rebase_state.not_applied.append(branch_parent)
-        self.rebase_state.not_applied = self.rebase_state.not_applied[::-1]
 
         for head_parent in self.enumerate_commit_parents(head_commit, return_itself=True):
             for item in head_parent.tree.children:
@@ -153,14 +152,12 @@ class CVS:
 
         self.rebase_state.current_dst_commit = head_commit
 
-        return self._rebase()
-
     def continue_rebase(self) -> RebaseState:
         if not self.rebase_state or not self.rebase_state.is_conflict:
             raise ValueError('not in rebase')
         self.rebase_state.is_conflict = False
 
-        state = self._rebase()
+        state = self.rebase()
         self.make_commit('resolve rebase conflict')
         if state.is_conflict:
             state.current_dst_commit = self.head.branch.commit
@@ -171,46 +168,52 @@ class CVS:
         if not self.rebase_state:
             return
         # передвигаем head и branch в начальное положение
-        self.move_head_with_branch_to_commit(self.rebase_state.destination_branch.commit)
+        self.head = self.move_head_with_branch_to_commit(self.rebase_state.destination_branch.commit)
+        self.store_head()
+        self.store_branch(self.head.branch)
         self.restore_repository_state(self.rebase_state.destination_branch.commit)
         self.rebase_state = None
 
-    def _rebase(self) -> RebaseState:
-        for not_applied_commit in self.rebase_state.not_applied:
-            if not_applied_commit in self.rebase_state.applied:
-                continue
-            for item, item_hash in not_applied_commit.tree.children.items():
-                if item in self.rebase_state.resolved_files:
-                    continue
-                self.rebase_state.current_file = item
-                self.rebase_state.resolved_files.add(item)
-                if item in self.rebase_state.destination_branch_changed:
-                    self.rebase_state.is_conflict = True
-                    # нужно составить файл с конфликтом
-                    branch_blob = Blob.deserialize(CVSStorage.read_object(item_hash.hex(), Blob, self._full_path_to_objects))
-                    other_branch_file_lines = branch_blob.content.decode().splitlines(keepends=True)
-                    with open(item.path, 'r') as f:
-                        curr_branch_file_lines = f.read().splitlines(keepends=True)
-                    create_diff_file(item.path, curr_branch_file_lines, other_branch_file_lines)
-                    # ждем разрешения конфликта
-                    return self.rebase_state
-            self.rebase_state.applied.add(not_applied_commit)
-            self.rebase_state.resolved_files = set()
-            # текущий коммит можно применить
-            not_applied_commit.parent_commit_hash = self.rebase_state.current_dst_commit.get_hash()
-            # сохранить на диск
-            CVSStorage.store_object(
-                not_applied_commit.get_hash().hex(), not_applied_commit.serialize(), Blob, self._full_path_to_objects)
-            # сдвинуть head и текущую ветку
-            self.head = self.move_head_with_branch_to_commit(not_applied_commit)
-            self.store_head()
-            self.store_branch(self.head.branch)
-            self.rebase_state.current_dst_commit = not_applied_commit
+    def rebase(self) -> RebaseState:
+        while self.rebase_state.not_applied:
+            not_applied_commit = self.rebase_state.not_applied.pop()
+            self.apply_commit(not_applied_commit)
+            if self.rebase_state.is_conflict:
+                return self.rebase_state
 
         state = self.rebase_state
         self.rebase_state = None
 
         return state
+
+    def apply_commit(self, commit: Commit):
+        for item, item_hash in commit.tree.children.items():
+            if item in self.rebase_state.resolved_files:
+                continue
+            self.rebase_state.current_file = item
+            self.rebase_state.resolved_files.add(item)
+            if item in self.rebase_state.destination_branch_changed:
+                self.rebase_state.is_conflict = True
+                # нужно составить файл с конфликтом
+                branch_blob = Blob.deserialize(
+                    CVSStorage.read_object(item_hash.hex(), Blob, self._full_path_to_objects))
+                other_branch_file_lines = branch_blob.content.decode().splitlines(keepends=True)
+                with open(item.path, 'r') as f:
+                    curr_branch_file_lines = f.read().splitlines(keepends=True)
+                create_diff_file(item.path, curr_branch_file_lines, other_branch_file_lines)
+                # ждем разрешения конфликта
+                return
+        self.rebase_state.resolved_files = set()
+        # текущий коммит можно применить
+        commit.parent_commit_hash = self.rebase_state.current_dst_commit.get_hash()
+        # сохранить на диск
+        CVSStorage.store_object(
+            commit.get_hash().hex(), commit.serialize(), Blob, self._full_path_to_objects)
+        # сдвинуть head и текущую ветку
+        self.head = self.move_head_with_branch_to_commit(commit)
+        self.store_head()
+        self.store_branch(self.head.branch)
+        self.rebase_state.current_dst_commit = commit
 
     def restore_repository_state(self, commit: Commit):
         tree_files = self.expand_full_tree(commit)
