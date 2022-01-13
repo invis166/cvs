@@ -1,0 +1,42 @@
+name: Run tests and show coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.8"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Test with pytest
+      run: |
+        python3 -m pytest tests/argument_parser_tests.py
+    - name: Check coverage with upload
+      run: |
+        python3 -m pytest tests/argument_parser_tests.py --cov=src --cov-report html:cov_html
+    - name: Check coverage
+      run: |
+        python3 -m pytest tests/ --cov=src
+    - name: Upload pytest-cov test results
+      uses: actions/upload-artifact@v2
+      with:
+        name: pytest-cov-results
+        path: cov_html
+      if: ${{ always() }}
