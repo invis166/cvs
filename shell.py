@@ -201,7 +201,7 @@ class CVSShell(cmd.Cmd):
     def do_rebase(self, arg):
         '''Rebase branches
         rebase [-i|--interactive] branch_name
-        rebase [-o|--onto] first_branch second_branch target_branch
+        rebase [-o|--onto] first_branch second_branch
         rebase [-a|--abort]
         '''
         arg = arg.split()
@@ -209,27 +209,21 @@ class CVSShell(cmd.Cmd):
             branch = self.cvs.get_branch_by_name(arg[0])
             self.cvs.initialize_rebase_state(branch)
             res = self.cvs.rebase()
-            if res.is_conflict:
-                print(f'can not finish rebase, please resolve conflict in {res.current_file.path}'
-                      f' and continue rebase, or abort it. To apply changes, add files to staged')
-            else:
-                print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
-                self.cvs.restore_repository_state(self.cvs.head.branch.commit)
-                for commit in res.applied:
-                    print_commit_info(commit, verbose=False)
+            self._handle_rebase_state(res)
         else:
             values = vars(self._rebase_parser.parse_args(arg))
             if values['continue']:
                 res = self.cvs.continue_rebase()
-                if res.is_conflict:
-                    print(f'can not finish rebase, please resolve conflict in {res.current_file.path} and continue rebase, or abort it')
-                else:
-                    print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
-                    self.cvs.restore_repository_state(self.cvs.head.branch.commit)
-                    for commit in res.applied:
-                        print_commit_info(commit, verbose=False)
+                self._handle_rebase_state(res)
             elif values['onto']:
-                print('not implemented')
+                first, second = map(self.cvs.get_branch_by_name, values['onto'])
+                self.cvs.initialize_rebase_state(second)
+                self.cvs.rebase_state.not_applied = []
+                for c in self.cvs.enumerate_commit_parents(second.commit, return_itself=True):
+                    if c == first.commit:
+                        break
+                    self.cvs.rebase_state.not_applied.append(c)
+                self._handle_rebase_state(self.cvs.rebase())
             elif values['interactive']:
                 self._handle_interactive_rebase(values['interactive'])
             elif values['abort']:
@@ -295,9 +289,19 @@ class CVSShell(cmd.Cmd):
 
         self._rebase_parser = argparse.ArgumentParser()
         self._rebase_parser.add_argument('-i', '--interactive', help='interactive mode')
-        self._rebase_parser.add_argument('-o', '--onto', nargs=3)
+        self._rebase_parser.add_argument('-o', '--onto', nargs=2)
         self._rebase_parser.add_argument('-a', '--abort', action='store_true', help='abort rebase')
         self._rebase_parser.add_argument('-c', '--continue', action='store_true', help='continue rebse')
+
+    def _handle_rebase_state(self, res: RebaseState):
+        if res.is_conflict:
+            print(f'can not finish rebase, please resolve conflict in {res.current_file.path}'
+                  f' and continue rebase, or abort it. To apply changes, add files to staged')
+        else:
+            print(f'successfully rebase {res.source_branch.name} on {res.destination_branch.name}')
+            self.cvs.restore_repository_state(self.cvs.head.branch.commit)
+            for commit in res.applied:
+                print_commit_info(commit, verbose=False)
 
     def _set_working_directory(self, directory: str):
         self.working_directory = os.path.abspath(directory)

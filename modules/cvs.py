@@ -131,14 +131,14 @@ class CVS:
         head_commit = self.get_commit_from_head()
         self.index.update(head_commit)
 
-    def initialize_rebase_state(self, branch: Branch) -> RebaseState:
+    def initialize_rebase_state(self, src_branch: Branch):
         head_branch = self.get_branch_from_head()
         head_commit = head_branch.commit
         head_commit_parents = {parent for parent in self.enumerate_commit_parents(head_commit)}
-        self.rebase_state = RebaseState(branch, head_branch)
+        self.rebase_state = RebaseState(src_branch, head_branch)
 
         common_commit = None
-        for branch_parent in self.enumerate_commit_parents(branch.commit, return_itself=True):
+        for branch_parent in self.enumerate_commit_parents(src_branch.commit, return_itself=True):
             if branch_parent in head_commit_parents:
                 common_commit = branch_parent
                 break
