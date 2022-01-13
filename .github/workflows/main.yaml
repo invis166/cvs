@@ -30,10 +30,10 @@ jobs:
         python3 -m pytest tests/
     - name: Check coverage with upload
       run: |
-        python3 -m pytest tests/argument_parser_tests.py --cov=src --cov-report html:cov_html
+        python3 -m pytest tests/ --cov=modules --cov-report html:cov_html
     - name: Check coverage
       run: |
-        python3 -m pytest tests/ --cov=src
+        python3 -m pytest tests/ --cov=modules
     - name: Upload pytest-cov test results
       uses: actions/upload-artifact@v2
       with:
