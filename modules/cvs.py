@@ -143,6 +143,8 @@ class CVS:
                 common_commit = branch_parent
                 break
             self.rebase_state.not_applied.append(branch_parent)
+        if common_commit is None:
+            common_commit = Commit(Tree())
 
         for head_parent in self.enumerate_commit_parents(head_commit, return_itself=True):
             for item in head_parent.tree.children:
