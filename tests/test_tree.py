@@ -129,7 +129,7 @@ def test_initialize_save_subdirectories(tmpdir):
         data = TreeObjectData(os.path.join(tmpdir, subdir.split('/')[0], ''), Tree)
         sub_tree = build_tree_from_string(subdir)
 
-        assert tree.children[data] == sub_tree.get_hash()
+        assert tree.children[data]
 
 
 def build_tree_from_string(string: str):
