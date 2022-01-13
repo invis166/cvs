@@ -30,4 +30,4 @@ jobs:
         python3 -m pytest tests/
     - name: Check coverage
       run: |
-        python3 -m pytest tests/test_blob.py --cov=modules/
+        python3 -m pytest tests/ --cov=modules/
