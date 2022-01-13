@@ -134,7 +134,7 @@ class CVS:
     def initialize_rebase_state(self, src_branch: Branch):
         head_branch = self.get_branch_from_head()
         head_commit = head_branch.commit
-        head_commit_parents = {parent for parent in self.enumerate_commit_parents(head_commit)}
+        head_commit_parents = {parent for parent in self.enumerate_commit_parents(head_commit, return_itself=True)}
         self.rebase_state = RebaseState(src_branch, head_branch)
 
         common_commit = None
